@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: campuscommute
+          POSTGRES_PASSWORD: campuscommute
+          POSTGRES_DB: campuscommute
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U campuscommute -d campuscommute"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://campuscommute:campuscommute@localhost:5432/campuscommute
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint backend
+        run: npm run lint -w backend
+
+      - name: Generate and run migrations
+        run: |
+          npm run db:generate -w backend
+          npm run db:migrate -w backend
+
+      - name: Seed database
+        run: npm run db:seed -w backend
+
+      - name: Build backend
+        run: npm run build -w backend
+
+      - name: Build frontend
+        run: npm run build -w frontend

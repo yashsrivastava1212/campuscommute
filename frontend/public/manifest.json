@@ -1,0 +1,10 @@
+{
+  "name": "CampusCommute",
+  "short_name": "CampusCommute",
+  "description": "GIM student carpooling platform",
+  "start_url": "/login",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#2563eb",
+  "icons": []
+}

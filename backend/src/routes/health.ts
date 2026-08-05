@@ -1,0 +1,30 @@
+import type { FastifyInstance } from "fastify";
+import { sql } from "drizzle-orm";
+import { db } from "../db/index.js";
+
+export async function healthRoutes(app: FastifyInstance) {
+  app.get("/health", async () => {
+    return {
+      status: "ok",
+      service: "campuscommute-api",
+      timestamp: new Date().toISOString(),
+    };
+  });
+
+  app.get("/health/ready", async (_request, reply) => {
+    try {
+      await db.execute(sql`SELECT 1`);
+      return {
+        status: "ready",
+        database: "connected",
+        timestamp: new Date().toISOString(),
+      };
+    } catch {
+      return reply.status(503).send({
+        status: "not_ready",
+        database: "disconnected",
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
+}

@@ -1,0 +1,180 @@
+openapi: 3.1.0
+info:
+  title: CampusCommute API
+  version: 0.1.0
+  description: |
+    API for CampusCommute — GIM student carpooling platform.
+    Phase 0 foundation with health checks and auth contract stubs.
+
+servers:
+  - url: http://localhost:3001
+    description: Local development
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      tags: [System]
+      responses:
+        "200":
+          description: Service is running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  service:
+                    type: string
+                    example: campuscommute-api
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /health/ready:
+    get:
+      summary: Readiness check (includes database)
+      tags: [System]
+      responses:
+        "200":
+          description: Service is ready
+        "503":
+          description: Service not ready
+
+  /api/v1/auth/send-otp:
+    post:
+      summary: Send OTP to GIM email
+      description: |
+        Validates `@gim.ac.in` domain and sends a 6-digit OTP.
+        Full implementation in Phase 1A.
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: student.name@gim.ac.in
+      responses:
+        "200":
+          description: OTP sent successfully
+        "400":
+          description: Invalid email format
+        "403":
+          description: Non-GIM email domain
+        "429":
+          description: Rate limit exceeded
+        "501":
+          description: Not yet implemented (Phase 0 stub)
+
+  /api/v1/auth/verify-otp:
+    post:
+      summary: Verify OTP and issue JWT
+      description: Full implementation in Phase 1A.
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, otp]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: student.name@gim.ac.in
+                otp:
+                  type: string
+                  pattern: "^\\d{6}$"
+                  example: "482913"
+      responses:
+        "200":
+          description: Verification successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+                  expires_in:
+                    type: integer
+                  user:
+                    type: object
+        "401":
+          description: Invalid or expired OTP
+        "403":
+          description: Non-GIM email domain
+        "501":
+          description: Not yet implemented (Phase 0 stub)
+
+  /api/v1/auth/refresh:
+    post:
+      summary: Refresh access token
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        "200":
+          description: New access token issued
+
+  /api/v1/carpools:
+    get:
+      summary: Browse carpools
+      tags: [Carpools]
+      parameters:
+        - name: destination
+          in: query
+          schema:
+            type: string
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [OPEN, LOCKED, COMPLETED, CANCELLED, ARCHIVED]
+      responses:
+        "200":
+          description: List of carpools
+    post:
+      summary: Create carpool
+      tags: [Carpools]
+      security:
+        - bearerAuth: []
+      responses:
+        "201":
+          description: Carpool created
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+tags:
+  - name: System
+  - name: Auth
+  - name: Carpools
