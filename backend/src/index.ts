@@ -21,13 +21,28 @@ import { startLifecycleJobs } from "./jobs/lifecycle.js";
 const PORT = Number(process.env.PORT ?? 3001);
 const HOST = process.env.HOST ?? "0.0.0.0";
 
+function parseCorsOrigins(): string[] | boolean {
+  const raw = process.env.CORS_ORIGIN?.trim();
+  if (!raw) {
+    if (process.env.NODE_ENV === "production") {
+      console.warn(
+        "[WARN] CORS_ORIGIN is not set — browser requests from the frontend will be blocked"
+      );
+      return [];
+    }
+    return ["http://localhost:3000"];
+  }
+  if (raw === "*") return true;
+  return raw.split(",").map((origin) => origin.trim()).filter(Boolean);
+}
+
 async function buildServer() {
   const app = Fastify({
     logger: process.env.NODE_ENV !== "test",
   });
 
   await app.register(cors, {
-    origin: process.env.CORS_ORIGIN ?? "http://localhost:3000",
+    origin: parseCorsOrigins(),
     credentials: true,
   });
 

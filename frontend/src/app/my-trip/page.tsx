@@ -1,0 +1,463 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { AuthGuard } from "@/components/auth/AuthGuard";
+import { AppShell } from "@/components/MainNav";
+import { DiscussionPanel } from "@/components/DiscussionPanel";
+import { TripInfoGrid } from "@/components/TripInfoGrid";
+import {
+  findLocation,
+  LocationSelect,
+  type Location,
+} from "@/components/LocationSelect";
+import { useAuth } from "@/context/AuthProvider";
+import { apiFetch } from "@/lib/api";
+
+type Member = {
+  id: string;
+  userId: string;
+  displayName: string | null;
+  role: string;
+};
+
+type JoinRequest = {
+  id: string;
+  status: string;
+  displayName: string | null;
+  requesterId: string;
+};
+
+type CarpoolDetail = {
+  id: string;
+  origin: string;
+  originId: string | null;
+  destination: string;
+  destinationId: string | null;
+  departureAt: string;
+  seatsAvailable: number;
+  totalSeats: number;
+  status: string;
+  isLocked: boolean;
+  notes: string | null;
+  ownerId: string;
+  joinCutoffAt: string;
+  members: Member[];
+};
+
+export default function MyTripPage() {
+  return (
+    <AuthGuard>
+      <MyTripContent />
+    </AuthGuard>
+  );
+}
+
+function MyTripContent() {
+  const { user, refreshUser } = useAuth();
+  const [carpool, setCarpool] = useState<CarpoolDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
+  const [error, setError] = useState("");
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const [editing, setEditing] = useState(false);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [originId, setOriginId] = useState("");
+  const [destinationId, setDestinationId] = useState("");
+  const [departureAt, setDepartureAt] = useState("");
+  const [totalSeats, setTotalSeats] = useState(4);
+  const [notes, setNotes] = useState("");
+
+  const isOwner = user?.id === carpool?.ownerId;
+  const isMember = Boolean(carpool?.members?.some((m) => m.userId === user?.id));
+  const isLocked = carpool?.status === "LOCKED" || carpool?.isLocked;
+
+  function loadTrip() {
+    setLoading(true);
+    apiFetch<{ carpool: CarpoolDetail | null }>("/api/v1/carpools/mine/active")
+      .then((data) => {
+        const trip = data.carpool;
+        setCarpool(trip ? { ...trip, members: trip.members ?? [] } : null);
+        if (trip) {
+          setOriginId(trip.originId ?? "");
+          setDestinationId(trip.destinationId ?? "");
+          setDepartureAt(new Date(trip.departureAt).toISOString().slice(0, 16));
+          setTotalSeats(trip.totalSeats);
+          setNotes(trip.notes ?? "");
+
+          if (user?.id === trip.ownerId && trip.status === "OPEN") {
+            apiFetch<{ joinRequests: JoinRequest[] }>(
+              `/api/v1/carpools/${trip.id}/join-requests`
+            )
+              .then((d) => setJoinRequests(d.joinRequests.filter((j) => j.status === "PENDING")))
+              .catch(() => undefined);
+          } else {
+            setJoinRequests([]);
+          }
+        }
+      })
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load trip"))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    apiFetch<{ destinations: Location[] }>("/api/v1/destinations")
+      .then((data) => setLocations(data.destinations))
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    loadTrip();
+  }, [user?.id]);
+
+  async function handleJoinAction(id: string, action: "accept" | "reject") {
+    setActionLoading(true);
+    try {
+      await apiFetch(`/api/v1/join-requests/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ action }),
+      });
+      loadTrip();
+      await refreshUser();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function lockCarpool() {
+    if (!carpool) return;
+    setActionLoading(true);
+    setError("");
+    try {
+      await apiFetch(`/api/v1/carpools/${carpool.id}/lock`, { method: "POST", body: "{}" });
+      loadTrip();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to lock");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function unlockCarpool() {
+    if (!carpool) return;
+    setActionLoading(true);
+    setError("");
+    try {
+      await apiFetch(`/api/v1/carpools/${carpool.id}/unlock`, { method: "POST", body: "{}" });
+      loadTrip();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to unlock");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (destinationId === originId) {
+      setDestinationId("");
+    }
+  }, [originId, destinationId]);
+
+  async function saveEdits(event: React.FormEvent) {
+    event.preventDefault();
+    if (!carpool) return;
+
+    const origin = findLocation(locations, originId);
+    const destination = findLocation(locations, destinationId);
+
+    if (!origin || !destination || !departureAt) {
+      setError("Please fill in all required fields.");
+      return;
+    }
+
+    if (origin.id === destination.id) {
+      setError("Starting and ending points must be different.");
+      return;
+    }
+
+    setActionLoading(true);
+    setError("");
+    try {
+      await apiFetch(`/api/v1/carpools/${carpool.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          origin: origin.name,
+          originId: origin.id,
+          destination: destination.name,
+          destinationId: destination.id,
+          departureAt: new Date(departureAt).toISOString(),
+          totalSeats,
+          notes: notes || undefined,
+        }),
+      });
+      setEditing(false);
+      loadTrip();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function leaveTrip() {
+    if (!carpool || !confirm("Leave this carpool?")) return;
+    setActionLoading(true);
+    setError("");
+    try {
+      await apiFetch(`/api/v1/carpools/${carpool.id}/leave`, { method: "POST", body: "{}" });
+      await refreshUser();
+      setCarpool(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to leave");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function cancelTrip() {
+    if (!carpool || !confirm("Cancel this carpool for all members?")) return;
+    setActionLoading(true);
+    setError("");
+    try {
+      await apiFetch(`/api/v1/carpools/${carpool.id}`, { method: "DELETE" });
+      await refreshUser();
+      setCarpool(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to cancel");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <AppShell>
+        <p className="py-12 text-center text-body-md text-on-variant">Loading your trip…</p>
+      </AppShell>
+    );
+  }
+
+  if (!carpool) {
+    return (
+      <AppShell>
+        <div className="mx-auto max-w-lg py-16 text-center">
+          <h1 className="text-headline-lg text-on-surface">My Trips</h1>
+          <p className="mt-2 text-body-lg text-on-variant">
+            You&apos;re not on an active ride yet. Browse open trips or create your own.
+          </p>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <Link href="/carpools" className="btn-primary--inline">
+              Browse rides
+            </Link>
+            <Link href="/carpools/new" className="btn-secondary--inline">
+              Create ride
+            </Link>
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
+
+  return (
+    <AppShell>
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-headline-lg text-on-surface">My Trips</h1>
+          <p className="mt-1.5 text-body-lg text-on-variant">
+            Your active journey — manage, chat, and coordinate here.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {isOwner && <span className="badge-owner">Owner</span>}
+          {isMember && !isOwner && <span className="badge-member">Member</span>}
+          {isLocked && <span className="badge-pending">Locked</span>}
+        </div>
+      </div>
+
+      <div className="mb-8 rounded-2xl border border-emerald/20 bg-white p-6 shadow-[var(--shadow-card)]">
+        <TripInfoGrid
+          origin={carpool.origin}
+          destination={carpool.destination}
+          departureAt={carpool.departureAt}
+          seatsAvailable={carpool.seatsAvailable}
+          totalSeats={carpool.totalSeats}
+          status={carpool.status}
+        />
+      </div>
+
+      <div className="grid gap-stack-lg lg:grid-cols-12">
+        <div className="space-y-stack-md lg:col-span-8">
+          {isOwner && !isLocked && joinRequests.length > 0 && (
+            <div className="card border-emerald border-t-4 p-5">
+              <h2 className="text-title-lg text-on-surface">Manage Requests</h2>
+              <ul className="mt-4 space-y-3">
+                {joinRequests.map((jr) => (
+                  <li key={jr.id} className="flex items-center justify-between gap-3 text-body-md">
+                    <span className="font-medium text-on-surface">{jr.displayName ?? "Student"}</span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleJoinAction(jr.id, "accept")}
+                        disabled={actionLoading}
+                        className="btn-emerald px-3 py-1.5"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        onClick={() => handleJoinAction(jr.id, "reject")}
+                        disabled={actionLoading}
+                        className="btn-secondary w-auto px-3 py-1.5"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {isOwner && editing && !isLocked ? (
+            <form onSubmit={saveEdits} className="card border-emerald border-t-4 space-y-stack-md p-5">
+              <h2 className="text-title-lg text-on-surface">Edit Route</h2>
+              <LocationSelect
+                id="my-trip-origin"
+                label="Starting point"
+                value={originId}
+                onChange={setOriginId}
+                locations={locations}
+              />
+              <LocationSelect
+                id="my-trip-destination"
+                label="Ending point"
+                value={destinationId}
+                onChange={setDestinationId}
+                locations={locations}
+                excludeId={originId}
+              />
+              <div>
+                <label className="label-field">Departure date & time</label>
+                <input
+                  type="datetime-local"
+                  className="input-field"
+                  value={departureAt}
+                  onChange={(e) => setDepartureAt(e.target.value)}
+                  required
+                />
+              </div>
+              <div>
+                <label className="label-field">Total seats</label>
+                <input
+                  type="number"
+                  min={2}
+                  max={8}
+                  className="input-field"
+                  value={totalSeats}
+                  onChange={(e) => setTotalSeats(Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <label className="label-field">Notes (optional)</label>
+                <textarea
+                  className="input-field min-h-[80px] resize-y"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-2">
+                <button type="submit" className="btn-primary flex-1" disabled={actionLoading || originId === destinationId}>
+                  {actionLoading ? "Saving…" : "Save Changes"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditing(false)}
+                  className="btn-secondary flex-1"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : (
+            carpool.notes && (
+              <div className="card bg-surface-muted p-5">
+                <p className="label-field">Notes</p>
+                <p className="text-body-md text-on-surface">{carpool.notes}</p>
+              </div>
+            )
+          )}
+
+          <DiscussionPanel carpoolId={carpool.id} isMember={isMember} />
+        </div>
+
+        <div className="space-y-stack-md lg:col-span-4">
+          <div
+            className={`card p-5 ${isOwner ? "border-emerald border-t-4" : "border-navy border-t-4"}`}
+          >
+            <h2 className="text-title-lg text-on-surface">Trip Actions</h2>
+
+            <div className="mt-6 space-y-2">
+              {isOwner && (
+                <>
+                  {!isLocked && (
+                    <>
+                      <button
+                        onClick={() => setEditing(!editing)}
+                        className="btn-secondary"
+                        disabled={actionLoading}
+                      >
+                        {editing ? "Close Editor" : "Edit Route"}
+                      </button>
+                      <button onClick={lockCarpool} className="btn-primary" disabled={actionLoading}>
+                        Lock Carpool
+                      </button>
+                    </>
+                  )}
+                  {isLocked && (
+                    <button onClick={unlockCarpool} className="btn-secondary" disabled={actionLoading}>
+                      Unlock Carpool
+                    </button>
+                  )}
+                  <button
+                    onClick={cancelTrip}
+                    className="w-full rounded-lg border border-error/30 px-4 py-2.5 text-body-md text-error transition-colors hover:bg-error-container"
+                    disabled={actionLoading}
+                  >
+                    Cancel Carpool
+                  </button>
+                </>
+              )}
+              {isMember && !isOwner && (
+                <button onClick={leaveTrip} className="btn-secondary" disabled={actionLoading}>
+                  Leave Carpool
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="card p-5">
+            <h2 className="text-title-lg text-on-surface">Members</h2>
+            <ul className="mt-4 space-y-3">
+              {(carpool.members ?? []).map((m) => (
+                <li key={m.id} className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-muted text-label-md font-medium text-on-variant">
+                      {(m.displayName ?? "S")[0]?.toUpperCase()}
+                    </div>
+                    <span className="text-body-md text-on-surface">{m.displayName ?? "Student"}</span>
+                  </div>
+                  <span className={m.role === "OWNER" ? "badge-owner" : "badge-member"}>
+                    {m.role === "OWNER" ? "Owner" : "Member"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {error && <p className="mt-4 text-body-md text-error">{error}</p>}
+    </AppShell>
+  );
+}

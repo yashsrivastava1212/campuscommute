@@ -59,6 +59,25 @@ export async function carpoolRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: "Departure must be in the future" });
       }
 
+      if (
+        parsed.data.originId &&
+        parsed.data.destinationId &&
+        parsed.data.originId === parsed.data.destinationId
+      ) {
+        return reply.status(400).send({
+          message: "Starting point and ending point must be different",
+        });
+      }
+
+      if (
+        parsed.data.origin.trim().toLowerCase() ===
+        parsed.data.destination.trim().toLowerCase()
+      ) {
+        return reply.status(400).send({
+          message: "Starting point and ending point must be different",
+        });
+      }
+
       const [user] = await db
         .select()
         .from(users)
@@ -149,6 +168,48 @@ export async function carpoolRoutes(app: FastifyInstance) {
   });
 
   app.get(
+    "/api/v1/carpools/mine/active",
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const userId = request.user!.sub;
+
+      const [user] = await db
+        .select({ activeCarpoolId: users.activeCarpoolId })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+
+      if (!user?.activeCarpoolId) {
+        return reply.send({ carpool: null });
+      }
+
+      const [carpool] = await db
+        .select()
+        .from(carpools)
+        .where(eq(carpools.id, user.activeCarpoolId))
+        .limit(1);
+
+      if (!carpool || carpool.status === "CANCELLED") {
+        return reply.send({ carpool: null });
+      }
+
+      const members = await db
+        .select({
+          id: carpoolMemberships.id,
+          userId: carpoolMemberships.userId,
+          role: carpoolMemberships.role,
+          joinedAt: carpoolMemberships.joinedAt,
+          displayName: users.displayName,
+        })
+        .from(carpoolMemberships)
+        .innerJoin(users, eq(carpoolMemberships.userId, users.id))
+        .where(eq(carpoolMemberships.carpoolId, carpool.id));
+
+      return reply.send({ carpool: { ...carpool, members } });
+    }
+  );
+
+  app.get(
     "/api/v1/carpools/mine/owned-open",
     { preHandler: authenticate },
     async (request, reply) => {
@@ -229,6 +290,23 @@ export async function carpoolRoutes(app: FastifyInstance) {
 
       if (existing.status !== "OPEN") {
         return reply.status(400).send({ message: "Cannot update a non-open carpool" });
+      }
+
+      const nextOriginId = parsed.data.originId ?? existing.originId;
+      const nextDestinationId = parsed.data.destinationId ?? existing.destinationId;
+      const nextOrigin = parsed.data.origin ?? existing.origin;
+      const nextDestination = parsed.data.destination ?? existing.destination;
+
+      if (nextOriginId && nextDestinationId && nextOriginId === nextDestinationId) {
+        return reply.status(400).send({
+          message: "Starting point and ending point must be different",
+        });
+      }
+
+      if (nextOrigin.trim().toLowerCase() === nextDestination.trim().toLowerCase()) {
+        return reply.status(400).send({
+          message: "Starting point and ending point must be different",
+        });
       }
 
       const updates: Partial<typeof carpools.$inferInsert> = {

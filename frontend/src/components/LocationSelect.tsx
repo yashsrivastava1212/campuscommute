@@ -38,6 +38,7 @@ type LocationSelectProps = {
   locations: Location[];
   placeholder?: string;
   required?: boolean;
+  excludeId?: string;
 };
 
 export function LocationSelect({
@@ -48,12 +49,16 @@ export function LocationSelect({
   locations,
   placeholder = "Select location",
   required = true,
+  excludeId,
 }: LocationSelectProps) {
-  const groups = groupLocations(locations);
+  const filtered = excludeId
+    ? locations.filter((loc) => loc.id !== excludeId)
+    : locations;
+  const groups = groupLocations(filtered);
 
   return (
     <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-slate-700">
+      <label htmlFor={id} className="label-field">
         {label}
       </label>
       <select

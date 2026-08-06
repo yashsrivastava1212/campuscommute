@@ -234,6 +234,30 @@ export async function joinRequestRoutes(app: FastifyInstance) {
   );
 
   app.post(
+    "/api/v1/carpools/:id/unlock",
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const [carpool] = await db.select().from(carpools).where(eq(carpools.id, id)).limit(1);
+      if (!carpool) return reply.status(404).send({ message: "Carpool not found" });
+      if (carpool.ownerId !== request.user!.sub) return reply.status(403).send({ message: "Owner only" });
+      if (carpool.status !== "LOCKED") {
+        return reply.status(400).send({ message: "Carpool is not locked" });
+      }
+
+      const [updated] = await db
+        .update(carpools)
+        .set({ status: "OPEN", isLocked: false, updatedAt: new Date() })
+        .where(eq(carpools.id, id))
+        .returning();
+
+      await postSystemMessage(id, "Carpool unlocked. Open for updates again.");
+
+      return reply.send(updated);
+    }
+  );
+
+  app.post(
     "/api/v1/carpools/:id/leave",
     { preHandler: authenticate },
     async (request, reply) => {

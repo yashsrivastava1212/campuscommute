@@ -32,6 +32,8 @@ When `RESEND_API_KEY` is not set, OTP is **not emailed**. Instead:
 
 ## Local database (no Docker required)
 
+See [DEPLOY.md](./DEPLOY.md) for **Vercel + Railway** production deployment.
+
 By default in development, the backend uses an **embedded PGLite database** — no PostgreSQL or Docker needed.
 
 To use real PostgreSQL instead (e.g. with `docker compose up -d`):

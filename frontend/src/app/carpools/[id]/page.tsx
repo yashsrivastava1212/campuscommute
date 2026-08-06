@@ -1,12 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { AuthGuard } from "@/components/auth/AuthGuard";
-import { MainNav } from "@/components/MainNav";
+import { AppShell } from "@/components/MainNav";
 import { DiscussionPanel } from "@/components/DiscussionPanel";
+import { TripInfoGrid } from "@/components/TripInfoGrid";
 import { useAuth } from "@/context/AuthProvider";
 import { apiFetch } from "@/lib/api";
-import { useParams } from "next/navigation";
 
 type Member = {
   id: string;
@@ -37,11 +39,20 @@ type CarpoolDetail = {
   members: Member[];
 };
 
-type CostSplit = {
-  perPersonInr: number;
-  savingsInr: number;
-  memberCount: number;
-};
+type ViewRole = "owner" | "member" | "requester" | "visitor";
+
+function borderClass(role: ViewRole) {
+  switch (role) {
+    case "owner":
+      return "border-emerald border-t-4";
+    case "member":
+      return "border-navy border-t-4";
+    case "requester":
+      return "border-amber-accent border-t-4";
+    default:
+      return "border-border";
+  }
+}
 
 export default function CarpoolDetailPage() {
   return (
@@ -53,32 +64,49 @@ export default function CarpoolDetailPage() {
 
 function DetailContent() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const { user } = useAuth();
   const [carpool, setCarpool] = useState<CarpoolDetail | null>(null);
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
   const [myRequest, setMyRequest] = useState<string | null>(null);
-  const [costSplit, setCostSplit] = useState<CostSplit | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const isOwner = user?.id === carpool?.ownerId;
-  const myMembership = carpool?.members.find((m) => m.userId === user?.id);
+  const myMembership = carpool?.members?.find((m) => m.userId === user?.id);
   const isMember = Boolean(myMembership);
+
+  const viewRole: ViewRole = isOwner
+    ? "owner"
+    : isMember
+      ? "member"
+      : myRequest === "PENDING"
+        ? "requester"
+        : "visitor";
 
   function reload() {
     if (!params.id) return;
-    apiFetch<CarpoolDetail>(`/api/v1/carpools/${params.id}`).then(setCarpool).catch(() => undefined);
-    if (isOwner) {
-      apiFetch<{ joinRequests: JoinRequest[] }>(`/api/v1/carpools/${params.id}/join-requests`)
-        .then((d) => setJoinRequests(d.joinRequests.filter((j) => j.status === "PENDING")))
-        .catch(() => undefined);
-    }
-    apiFetch<CostSplit>(`/api/v1/carpools/${params.id}/cost-split`).then(setCostSplit).catch(() => undefined);
+    apiFetch<CarpoolDetail>(`/api/v1/carpools/${params.id}`)
+      .then((data) => {
+        setCarpool({ ...data, members: data.members ?? [] });
+        if (user?.id === data.ownerId) {
+          apiFetch<{ joinRequests: JoinRequest[] }>(`/api/v1/carpools/${params.id}/join-requests`)
+            .then((d) => setJoinRequests(d.joinRequests.filter((j) => j.status === "PENDING")))
+            .catch(() => undefined);
+        }
+      })
+      .catch(() => undefined);
   }
 
   useEffect(() => {
     reload();
-  }, [params.id, user?.id, isOwner, isMember]);
+  }, [params.id, user?.id]);
+
+  useEffect(() => {
+    if (carpool && user && (isOwner || isMember)) {
+      router.replace("/my-trip");
+    }
+  }, [carpool, user, isOwner, isMember, router]);
 
   async function requestJoin() {
     setLoading(true);
@@ -101,12 +129,13 @@ function DetailContent() {
     reload();
   }
 
-  async function lockCarpool() {
-    await apiFetch(`/api/v1/carpools/${params.id}/lock`, { method: "POST", body: "{}" });
-    reload();
+  if (!carpool) {
+    return (
+      <AppShell>
+        <p className="py-12 text-center text-body-md text-on-variant">Loading…</p>
+      </AppShell>
+    );
   }
-
-  if (!carpool) return <p className="p-8 text-center text-slate-500">Loading…</p>;
 
   const cutoffPassed = new Date() >= new Date(carpool.joinCutoffAt);
   const canJoin =
@@ -116,91 +145,121 @@ function DetailContent() {
     !carpool.isLocked &&
     carpool.seatsAvailable > 0 &&
     !cutoffPassed &&
-    !user?.activeCarpoolId;
+    !user?.activeCarpoolId &&
+    myRequest !== "PENDING";
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      <MainNav />
-
-      <div className="mx-auto max-w-lg space-y-4 px-4 py-6">
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h1 className="text-xl font-semibold text-slate-900">
-            {carpool.origin} → {carpool.destination}
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">{new Date(carpool.departureAt).toLocaleString()}</p>
-          <p className="mt-2 text-sm text-brand-700">
-            {carpool.seatsAvailable} of {carpool.totalSeats} seats available · {carpool.status}
-          </p>
-          {costSplit && (
-            <p className="mt-2 text-sm text-green-700">
-              Est. ₹{costSplit.perPersonInr}/person · Save ₹{costSplit.savingsInr} vs solo taxi
-            </p>
-          )}
-          {carpool.notes && <p className="mt-3 rounded-lg bg-slate-50 p-3 text-sm">{carpool.notes}</p>}
+    <AppShell>
+      <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <Link href="/carpools" className="text-body-md text-on-variant transition-colors hover:text-on-surface">
+            ← Back to browse rides
+          </Link>
+          <h1 className="mt-2 text-headline-lg text-on-surface">Ride details</h1>
         </div>
-
-        {canJoin && (
-          <button onClick={requestJoin} disabled={loading} className="btn-primary">
-            {loading ? "Requesting…" : "Request to Join"}
-          </button>
-        )}
-        {myRequest === "PENDING" && (
-          <p className="text-sm text-amber-600">Join request pending owner approval</p>
-        )}
-        {cutoffPassed && !isMember && (
-          <p className="text-sm text-slate-500">Join requests closed (30 min before departure)</p>
-        )}
-
-        {isOwner && carpool.status === "OPEN" && (
-          <div className="space-y-3">
-            <button onClick={lockCarpool} className="btn-primary">
-              Lock Carpool
-            </button>
-            {joinRequests.length > 0 && (
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <h2 className="text-sm font-semibold text-slate-700">Join Requests</h2>
-                <ul className="mt-2 space-y-2">
-                  {joinRequests.map((jr) => (
-                    <li key={jr.id} className="flex items-center justify-between text-sm">
-                      <span>{jr.displayName ?? "Student"}</span>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleJoinAction(jr.id, "accept")}
-                          className="rounded-lg bg-green-600 px-3 py-1 text-white"
-                        >
-                          Accept
-                        </button>
-                        <button
-                          onClick={() => handleJoinAction(jr.id, "reject")}
-                          className="rounded-lg bg-slate-200 px-3 py-1"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Members</h2>
-          <ul className="mt-2 space-y-1">
-            {carpool.members.map((m) => (
-              <li key={m.id} className="flex justify-between text-sm">
-                <span>{m.displayName ?? "Student"}</span>
-                <span className="text-slate-400">{m.role}</span>
-              </li>
-            ))}
-          </ul>
+        <div className="flex flex-wrap gap-2">
+          {viewRole === "requester" && <span className="badge-pending">Pending Approval</span>}
         </div>
-
-        <DiscussionPanel carpoolId={carpool.id} isMember={isMember} />
-
-        {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
-    </main>
+
+      <div className="mb-8 rounded-2xl border border-emerald/20 bg-white p-6 shadow-[var(--shadow-card)]">
+        <TripInfoGrid
+          origin={carpool.origin}
+          destination={carpool.destination}
+          departureAt={carpool.departureAt}
+          seatsAvailable={carpool.seatsAvailable}
+          totalSeats={carpool.totalSeats}
+          status={carpool.status}
+        />
+      </div>
+
+      <div className="grid gap-stack-lg lg:grid-cols-12">
+        <div className="space-y-stack-md lg:col-span-8">
+          {isOwner && carpool.status === "OPEN" && joinRequests.length > 0 && (
+            <div className={`card p-5 ${borderClass("owner")}`}>
+              <h2 className="text-title-lg text-on-surface">Manage Requests</h2>
+              <ul className="mt-4 space-y-3">
+                {joinRequests.map((jr) => (
+                  <li key={jr.id} className="flex items-center justify-between gap-3 text-body-md">
+                    <span className="font-medium text-on-surface">{jr.displayName ?? "Student"}</span>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleJoinAction(jr.id, "accept")}
+                        className="btn-emerald px-3 py-1.5"
+                      >
+                        Accept
+                      </button>
+                      <button
+                        onClick={() => handleJoinAction(jr.id, "reject")}
+                        className="btn-secondary w-auto px-3 py-1.5"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {carpool.notes && (
+            <div className="card bg-surface-muted p-5">
+              <p className="label-field">Notes</p>
+              <p className="text-body-md text-on-surface">{carpool.notes}</p>
+            </div>
+          )}
+
+          <DiscussionPanel carpoolId={carpool.id} isMember={isMember} />
+        </div>
+
+        <div className="space-y-stack-md lg:col-span-4">
+          <div className={`card p-5 ${borderClass(viewRole)}`}>
+            <h2 className="text-title-lg text-on-surface">Join This Trip</h2>
+
+            <div className="mt-6 space-y-2">
+              {canJoin && (
+                <button onClick={requestJoin} disabled={loading} className="btn-primary">
+                  {loading ? "Requesting…" : "Request to Join"}
+                </button>
+              )}
+              {viewRole === "requester" && (
+                <p className="text-body-md text-amber-accent">Join request pending owner approval</p>
+              )}
+              {isMember && !isOwner && (
+                <Link href="/my-trip" className="btn-primary">
+                  Go to My Trips
+                </Link>
+              )}
+              {cutoffPassed && !isMember && (
+                <p className="text-body-md text-on-variant">
+                  Join requests closed (30 min before departure)
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="card p-5">
+            <h2 className="text-title-lg text-on-surface">Members</h2>
+            <ul className="mt-4 space-y-3">
+              {(carpool.members ?? []).map((m) => (
+                <li key={m.id} className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-muted text-label-md font-medium text-on-variant">
+                      {(m.displayName ?? "S")[0]?.toUpperCase()}
+                    </div>
+                    <span className="text-body-md text-on-surface">{m.displayName ?? "Student"}</span>
+                  </div>
+                  <span className={m.role === "OWNER" ? "badge-owner" : "badge-member"}>
+                    {m.role === "OWNER" ? "Owner" : "Member"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {error && <p className="mt-4 text-body-md text-error">{error}</p>}
+    </AppShell>
   );
 }

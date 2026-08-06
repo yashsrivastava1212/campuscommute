@@ -33,6 +33,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const signIn = useCallback((session: AuthSession) => {
+    if (!session.user?.id) {
+      clearSession();
+      setUser(null);
+      setIsLoading(false);
+      return;
+    }
     setUser(session.user);
     setIsLoading(false);
   }, []);
@@ -44,13 +50,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    if (!session.user?.id) {
+      clearSession();
+      setUser(null);
+      return;
+    }
+
     try {
       const profile = await apiFetch<{
         id: string;
         email: string;
         displayName: string | null;
         profileComplete: boolean;
+        activeCarpoolId?: string | null;
+        isAdmin?: boolean;
       }>("/api/v1/users/me");
+
+      if (!profile?.id) {
+        clearSession();
+        setUser(null);
+        return;
+      }
 
       setUser({
         id: profile.id,
@@ -58,20 +78,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         displayName: profile.displayName,
         isNewUser: false,
         profileComplete: profile.profileComplete,
-        activeCarpoolId: (profile as { activeCarpoolId?: string }).activeCarpoolId,
-        isAdmin: (profile as { isAdmin?: boolean }).isAdmin,
+        activeCarpoolId: profile.activeCarpoolId,
+        isAdmin: profile.isAdmin,
       });
     } catch {
-      setUser(session.user);
+      clearSession();
+      setUser(null);
     }
   }, []);
 
   useEffect(() => {
     const session: AuthSession | null = getSession();
-    if (session) {
+    if (session?.user?.id) {
       setUser(session.user);
       refreshUser().finally(() => setIsLoading(false));
     } else {
+      if (session) clearSession();
+      setUser(null);
       setIsLoading(false);
     }
   }, [refreshUser]);
@@ -105,7 +128,7 @@ export function useRequireAuth(options?: { requireProfile?: boolean }) {
   useEffect(() => {
     if (auth.isLoading) return;
 
-    if (!auth.user) {
+    if (!auth.user?.id) {
       router.replace("/login");
       return;
     }

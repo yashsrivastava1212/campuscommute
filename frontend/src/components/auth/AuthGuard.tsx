@@ -21,7 +21,7 @@ export function AuthGuard({
     );
   }
 
-  if (!auth.user) return null;
+  if (!auth.user?.id) return null;
   if (requireProfile && !auth.user.profileComplete) return null;
 
   return <>{children}</>;
@@ -32,7 +32,7 @@ export function GuestGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && user) {
+    if (!isLoading && user?.id) {
       router.replace(user.profileComplete ? "/carpools" : "/profile/setup");
     }
   }, [isLoading, user, router]);
@@ -45,7 +45,13 @@ export function GuestGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (user) return null;
+  if (user?.id) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-slate-500">
+        Redirecting…
+      </div>
+    );
+  }
 
   return <>{children}</>;
 }

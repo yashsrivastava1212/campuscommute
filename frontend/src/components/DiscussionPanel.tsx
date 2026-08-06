@@ -13,6 +13,30 @@ type Message = {
 
 const QUICK_REPLIES = ["At main gate", "Running 10 min late", "Taxi arrived"];
 
+function formatDateLabel(iso: string) {
+  return new Date(iso).toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function groupMessagesByDate(messages: Message[]) {
+  const groups: { date: string; messages: Message[] }[] = [];
+  let currentDate = "";
+
+  for (const msg of messages) {
+    const date = formatDateLabel(msg.sentAt);
+    if (date !== currentDate) {
+      currentDate = date;
+      groups.push({ date, messages: [] });
+    }
+    groups[groups.length - 1].messages.push(msg);
+  }
+
+  return groups;
+}
+
 export function DiscussionPanel({ carpoolId, isMember }: { carpoolId: string; isMember: boolean }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
@@ -47,47 +71,81 @@ export function DiscussionPanel({ carpoolId, isMember }: { carpoolId: string; is
 
   if (!isMember) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+      <div className="card p-5 text-body-md text-on-variant">
         Join the carpool to access trip discussion.
       </div>
     );
   }
 
+  const grouped = groupMessagesByDate(messages);
+
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Trip Discussion</h2>
-      <ul className="mt-3 max-h-64 space-y-2 overflow-y-auto">
-        {messages.map((m) => (
-          <li key={m.id} className={`text-sm ${m.isSystem ? "text-slate-400 italic" : ""}`}>
-            {!m.isSystem && <span className="font-medium">{m.displayName ?? "Member"}: </span>}
-            {m.body}
-          </li>
-        ))}
-      </ul>
-      <div className="mt-3 flex flex-wrap gap-2">
+    <div className="card p-5">
+      <h2 className="text-title-lg text-on-surface">Trip Discussion</h2>
+
+      <div className="mt-5 max-h-80 space-y-6 overflow-y-auto">
+        {grouped.length === 0 ? (
+          <p className="text-body-md text-on-variant">No messages yet. Say hello to your group.</p>
+        ) : (
+          grouped.map((group) => (
+            <div key={group.date}>
+              <div className="relative mb-4 flex items-center">
+                <div className="flex-1 border-t border-border" />
+                <span className="px-3 text-label-md text-on-variant">{group.date}</span>
+                <div className="flex-1 border-t border-border" />
+              </div>
+              <ul className="space-y-4">
+                {group.messages.map((m) => (
+                  <li key={m.id}>
+                    {m.isSystem ? (
+                      <p className="font-mono text-mono-sm text-slate-member">{m.body}</p>
+                    ) : (
+                      <div>
+                        <p className="text-label-md font-semibold text-on-surface">
+                          {m.displayName ?? "Member"}
+                          <span className="ml-2 font-normal text-slate-member">
+                            {new Date(m.sentAt).toLocaleTimeString(undefined, {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </span>
+                        </p>
+                        <p className="mt-0.5 text-body-md text-on-surface">{m.body}</p>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
         {QUICK_REPLIES.map((q) => (
           <button
             key={q}
             onClick={() => send(q)}
-            className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 hover:bg-slate-200"
+            className="rounded-full border border-border bg-surface-muted px-3 py-1 text-label-md text-on-variant transition-colors hover:border-border-hover hover:bg-white"
           >
             {q}
           </button>
         ))}
       </div>
-      <div className="mt-3 flex gap-2">
+
+      <div className="mt-4 flex gap-2">
         <input
           className="input-field flex-1"
-          placeholder="Type a message..."
+          placeholder="Type a message…"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && text && send(text)}
         />
-        <button onClick={() => text && send(text)} className="btn-primary w-auto px-4 py-2">
+        <button onClick={() => text && send(text)} className="btn-primary w-auto shrink-0 px-5">
           Send
         </button>
       </div>
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-body-md text-error">{error}</p>}
     </div>
   );
 }

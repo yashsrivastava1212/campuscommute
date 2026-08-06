@@ -7,10 +7,13 @@
     "dev": "tsx watch --env-file=../.env src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
+    "deploy": "npm run db:migrate && npm run db:seed && npm run start",
     "lint": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/db/migrate.ts",
-    "db:seed": "tsx src/db/seed.ts"
+    "db:migrate": "node dist/db/migrate.js",
+    "db:migrate:dev": "tsx src/db/migrate.ts",
+    "db:seed": "node dist/db/seed.js",
+    "db:seed:dev": "tsx src/db/seed.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",

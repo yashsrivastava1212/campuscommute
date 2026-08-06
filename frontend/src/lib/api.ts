@@ -41,10 +41,16 @@ export async function apiFetch<T>(
     session = await refreshSession(session);
   }
 
+  const hasBody =
+    options.body !== undefined && options.body !== null && options.body !== "";
+
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
+
+  if (hasBody && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
 
   if (session?.accessToken) {
     headers.Authorization = `Bearer ${session.accessToken}`;
@@ -57,7 +63,7 @@ export async function apiFetch<T>(
 
   if (response.status === 401) {
     clearSession();
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
       window.location.href = "/login";
     }
     throw new Error("Unauthorized");

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { AuthProvider } from "@/context/AuthProvider";
+import { ClientProviders } from "@/components/ClientProviders";
 import "./globals.css";
 
 const inter = Inter({
@@ -9,9 +10,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "CampusCommute — GIM Carpooling",
+  title: "CampusCommute — Where GIM moves together.",
   description:
-    "Discover fellow GIM students travelling to the same destination. Carpool smarter. Travel together.",
+    "Find fellow GIM students heading your way and share the journey. CampusCommute — GIM student carpooling.",
   manifest: "/manifest.json",
 };
 
@@ -23,7 +24,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} font-sans antialiased`}>
-        <AuthProvider>{children}</AuthProvider>
+        <ClientProviders>
+          <AuthProvider>{children}</AuthProvider>
+        </ClientProviders>
       </body>
     </html>
   );

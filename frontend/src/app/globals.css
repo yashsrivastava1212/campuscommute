@@ -1,34 +1,474 @@
 @import "tailwindcss/base";
+
 @import "tailwindcss/components";
+
 @import "tailwindcss/utilities";
 
+
+
 :root {
+
+  --ink: #0f172a;
+
+  --ink-hover: #1e293b;
+
+  --emerald: #10b981;
+
+  --emerald-dark: #059669;
+
   --background: #f8fafc;
-  --foreground: #0f172a;
+
+  --background-warm: #f7f8f6;
+
+  --surface: #ffffff;
+
+  --surface-muted: #f1f5f9;
+
+  --text-primary: #0f172a;
+
+  --text-secondary: #64748b;
+
+  --text-muted: #94a3b8;
+
+  --border: #e2e8f0;
+
+  --border-hover: #cbd5e1;
+
+  --radius-input: 10px;
+
+  --radius-button: 10px;
+
+  --radius-card: 16px;
+
+  --transition-fast: 150ms ease;
+
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04);
+
+  --shadow-card-hover: 0 4px 12px rgba(15, 23, 42, 0.06);
+
 }
+
+
 
 body {
-  color: var(--foreground);
+
+  color: var(--text-primary);
+
   background: var(--background);
+
   min-height: 100vh;
+
 }
+
+
 
 @layer components {
-  .btn-primary {
-    @apply w-full rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white
-      transition hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500
-      focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+
+  .bg-app {
+
+    @apply bg-background;
+
   }
+
+
+
+  .sidebar {
+
+    @apply flex w-sidebar shrink-0 flex-col border-r border-border bg-surface;
+
+  }
+
+
+
+  .sidebar-mobile-overlay {
+
+    @apply fixed inset-0 z-40 bg-navy/20 backdrop-blur-sm lg:hidden;
+
+  }
+
+
+
+  .sidebar-drawer {
+
+    @apply fixed inset-y-0 left-0 z-50 flex w-sidebar flex-col border-r border-border bg-surface shadow-xl transition-transform duration-200 lg:static lg:translate-x-0 lg:shadow-none;
+
+  }
+
+
+
+  .app-topbar {
+
+    @apply sticky top-0 z-30 flex h-14 items-center justify-between gap-4 border-b border-border bg-surface/95 px-4 backdrop-blur-md md:px-8;
+
+  }
+
+
+
+  .nav-link {
+
+    @apply relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-body-md text-on-variant transition-all duration-150 hover:bg-surface-muted hover:text-on-surface;
+
+  }
+
+
+
+  .nav-link--active {
+
+    @apply bg-navy/[0.06] font-medium text-navy;
+
+  }
+
+
+
+  .nav-link-indicator {
+
+    @apply absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-emerald opacity-0 transition-opacity;
+
+  }
+
+
+
+  .nav-link--active .nav-link-indicator {
+
+    @apply opacity-100;
+
+  }
+
+
+
+  .notification-panel {
+
+    @apply fixed right-4 top-[3.75rem] z-50 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-2xl border border-border bg-white shadow-xl;
+
+  }
+
+
+
+  .btn-primary {
+
+    @apply inline-flex min-h-[44px] w-full items-center justify-center rounded-[var(--radius-button)] bg-navy px-4 py-2.5 text-body-md font-medium text-white shadow-sm
+
+      transition-all duration-150 hover:bg-navy-muted focus:outline-none focus:ring-2 focus:ring-emerald/40 focus:ring-offset-2
+
+      disabled:cursor-not-allowed disabled:opacity-50;
+
+  }
+
+
+
+  .btn-primary--inline {
+
+    @apply btn-primary w-auto px-5;
+
+  }
+
+
+
+  .btn-secondary {
+
+    @apply inline-flex min-h-[44px] w-full items-center justify-center rounded-[var(--radius-button)] border border-border bg-white px-4 py-2.5
+
+      text-body-md font-medium text-navy shadow-sm transition-all duration-150 hover:border-border-hover hover:bg-surface-muted
+
+      focus:outline-none focus:ring-2 focus:ring-emerald/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+
+  }
+
+
+
+  .btn-secondary--inline {
+
+    @apply btn-secondary w-auto px-5;
+
+  }
+
+
+
+  .btn-emerald {
+
+    @apply inline-flex min-h-[44px] items-center justify-center rounded-[var(--radius-button)] bg-emerald px-4 py-2 text-body-md font-medium text-white shadow-sm
+
+      transition-all duration-150 hover:bg-emerald-dark focus:outline-none focus:ring-2 focus:ring-emerald/40 focus:ring-offset-2
+
+      disabled:cursor-not-allowed disabled:opacity-50;
+
+  }
+
+
 
   .input-field {
-    @apply w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm
-      text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none
-      focus:ring-2 focus:ring-brand-500/20;
+
+    @apply min-h-[44px] w-full rounded-[var(--radius-input)] border border-border bg-white px-3 py-2.5 text-body-md text-on-surface shadow-sm
+
+      placeholder:text-muted transition-all duration-150 focus:border-emerald focus:outline-none focus:ring-2 focus:ring-emerald/20;
+
   }
 
-  .otp-box {
-    @apply h-12 w-10 rounded-lg border border-slate-200 bg-white text-center text-lg
-      font-semibold text-slate-900 focus:border-brand-500 focus:outline-none
-      focus:ring-2 focus:ring-brand-500/20 sm:h-14 sm:w-12;
+
+
+  .input-field:disabled {
+
+    @apply cursor-not-allowed bg-surface-muted opacity-70;
+
   }
+
+
+
+  .otp-box {
+
+    @apply h-12 w-10 rounded-[var(--radius-input)] border border-border bg-white text-center text-lg font-semibold text-on-surface shadow-sm
+
+      transition-colors focus:border-emerald focus:outline-none focus:ring-2 focus:ring-emerald/20 sm:h-14 sm:w-12;
+
+  }
+
+
+
+  .card {
+
+    @apply rounded-[var(--radius-card)] border border-border bg-white shadow-[var(--shadow-card)] transition-all duration-150;
+
+  }
+
+
+
+  .card-interactive {
+
+    @apply card hover:border-emerald/25 hover:shadow-[var(--shadow-card-hover)];
+
+  }
+
+
+
+  .ride-card {
+
+    @apply rounded-[var(--radius-card)] border border-border bg-white p-5 shadow-[var(--shadow-card)] transition-all duration-150
+
+      hover:border-emerald/25 hover:shadow-[var(--shadow-card-hover)];
+
+  }
+
+
+
+  .badge {
+
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-label-md font-medium;
+
+  }
+
+
+
+  .badge-owner {
+
+    @apply badge bg-emerald-light text-emerald-dark ring-1 ring-emerald/20;
+
+  }
+
+
+
+  .badge-member {
+
+    @apply badge bg-surface-muted text-muted ring-1 ring-border;
+
+  }
+
+
+
+  .badge-pending {
+
+    @apply badge bg-amber-light text-amber-accent ring-1 ring-amber-accent/20;
+
+  }
+
+
+
+  .label-field {
+
+    @apply mb-1.5 block text-body-md font-medium text-on-surface;
+
+  }
+
+
+
+  .form-section-title {
+
+    @apply mb-4 text-label-md font-semibold uppercase tracking-wider text-muted;
+
+  }
+
+
+
+  .filter-bar {
+
+    @apply flex flex-col gap-4 rounded-[var(--radius-card)] border border-border bg-white p-4 shadow-[var(--shadow-card)] sm:flex-row sm:items-end;
+
+  }
+
+
+
+  .filter-field {
+
+    @apply flex-1;
+
+  }
+
+
+
+  .empty-state {
+
+    @apply rounded-[var(--radius-card)] border border-dashed border-border bg-surface-muted/50 px-6 py-14 text-center;
+
+  }
+
+
+
+  .cab-contact-card {
+
+    @apply flex gap-4 rounded-[var(--radius-card)] border border-border bg-white p-4 shadow-[var(--shadow-card)] transition-all duration-150 hover:border-border-hover hover:shadow-[var(--shadow-card-hover)];
+
+  }
+
+
+
+  .login-brand-panel {
+
+    @apply relative hidden flex-col justify-center overflow-hidden bg-navy px-12 py-16 text-white lg:flex lg:w-[55%] xl:px-16;
+
+  }
+
+  .login-brand-accent {
+
+    @apply mt-5 h-0.5 w-12 rounded-full bg-emerald/80;
+
+  }
+
+
+
+  .login-auth-panel {
+
+    @apply flex flex-1 flex-col justify-center px-6 py-12 sm:px-10 lg:px-16 xl:px-20;
+
+  }
+
+
+
+  .route-viz {
+
+    @apply relative mt-10 space-y-0;
+
+  }
+
+
+
+  .route-viz-line {
+
+    @apply absolute left-[5px] top-3 bottom-3 w-px bg-emerald/40;
+
+  }
+
+
+
+  .splash-screen {
+
+    @apply fixed inset-0 z-[100] flex items-center justify-center bg-background-warm transition-opacity duration-300;
+
+  }
+
+
+
+  .splash-screen--exit {
+
+    @apply pointer-events-none opacity-0;
+
+  }
+
+
+
+  .splash-logo {
+
+    animation: splash-logo-in 0.5s ease forwards;
+
+  }
+
+
+
+  .splash-logo--static {
+
+    animation: none;
+
+  }
+
+
+
+  .animate-dropdown {
+
+    animation: dropdown-in 0.15s ease;
+
+  }
+
 }
+
+
+
+@keyframes splash-logo-in {
+
+  from {
+
+    opacity: 0;
+
+    transform: scale(0.92);
+
+  }
+
+  to {
+
+    opacity: 1;
+
+    transform: scale(1);
+
+  }
+
+}
+
+
+
+@keyframes dropdown-in {
+
+  from {
+
+    opacity: 0;
+
+    transform: translateY(-4px);
+
+  }
+
+  to {
+
+    opacity: 1;
+
+    transform: translateY(0);
+
+  }
+
+}
+
+
+
+@media (prefers-reduced-motion: reduce) {
+
+  .splash-logo {
+
+    animation: none;
+
+  }
+
+
+
+  .animate-dropdown {
+
+    animation: none;
+
+  }
+
+}
+

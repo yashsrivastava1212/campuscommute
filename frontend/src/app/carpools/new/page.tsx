@@ -1,14 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Calendar, Clock, MapPin, Users } from "lucide-react";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import {
   findLocation,
   LocationSelect,
   type Location,
 } from "@/components/LocationSelect";
-import { MainNav } from "@/components/MainNav";
+import { AppShell } from "@/components/MainNav";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { useAuth } from "@/context/AuthProvider";
 import { apiFetch } from "@/lib/api";
 
 export default function CreateCarpoolPage() {
@@ -21,6 +25,7 @@ export default function CreateCarpoolPage() {
 
 function CreateContent() {
   const router = useRouter();
+  const { refreshUser } = useAuth();
   const [locations, setLocations] = useState<Location[]>([]);
   const [originId, setOriginId] = useState("");
   const [destinationId, setDestinationId] = useState("");
@@ -29,6 +34,8 @@ function CreateContent() {
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  const samePoints = Boolean(originId && destinationId && originId === destinationId);
 
   useEffect(() => {
     apiFetch<{ destinations: Location[] }>("/api/v1/destinations")
@@ -39,6 +46,23 @@ function CreateContent() {
       })
       .catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (samePoints) {
+      setDestinationId("");
+    }
+  }, [originId, samePoints]);
+
+  function handleOriginChange(id: string) {
+    setOriginId(id);
+    if (destinationId === id) setDestinationId("");
+    if (error) setError("");
+  }
+
+  function handleDestinationChange(id: string) {
+    setDestinationId(id);
+    if (error) setError("");
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -59,7 +83,7 @@ function CreateContent() {
 
     setIsLoading(true);
     try {
-      const carpool = await apiFetch<{ id: string }>("/api/v1/carpools", {
+      await apiFetch<{ id: string }>("/api/v1/carpools", {
         method: "POST",
         body: JSON.stringify({
           origin: origin.name,
@@ -71,7 +95,8 @@ function CreateContent() {
           notes: notes || undefined,
         }),
       });
-      router.push(`/carpools/${carpool.id}`);
+      await refreshUser();
+      router.push("/my-trip");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create carpool");
     } finally {
@@ -80,80 +105,121 @@ function CreateContent() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      <MainNav />
+    <AppShell>
+      <div className="mx-auto max-w-form">
+        <PageHeader
+          title="Create a ride"
+          subtitle="Share your journey with fellow GIM students."
+        />
 
-      <div className="mx-auto max-w-lg px-4 py-6">
-        <h1 className="text-xl font-semibold text-slate-900">Create Carpool</h1>
+        <form onSubmit={handleSubmit} className="space-y-8">
+          <section>
+            <h2 className="form-section-title flex items-center gap-2">
+              <MapPin className="h-4 w-4" aria-hidden />
+              Route
+            </h2>
+            <div className="space-y-4 rounded-2xl border border-border bg-white p-5 shadow-[var(--shadow-card)]">
+              <LocationSelect
+                id="origin"
+                label="From"
+                value={originId}
+                onChange={handleOriginChange}
+                locations={locations}
+                placeholder="Select starting point"
+              />
+              <LocationSelect
+                id="destination"
+                label="To"
+                value={destinationId}
+                onChange={handleDestinationChange}
+                locations={locations}
+                placeholder="Select destination"
+                excludeId={originId}
+              />
+              {samePoints && (
+                <p className="rounded-xl border border-error/20 bg-error-container px-3 py-2 text-body-md text-error">
+                  Pickup and drop-off cannot be the same location.
+                </p>
+              )}
+            </div>
+          </section>
 
-        <form
-          onSubmit={handleSubmit}
-          className="mt-6 space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-        >
-          <LocationSelect
-            id="origin"
-            label="Starting point"
-            value={originId}
-            onChange={setOriginId}
-            locations={locations}
-            placeholder="Select starting point"
-          />
+          <section>
+            <h2 className="form-section-title flex items-center gap-2">
+              <Calendar className="h-4 w-4" aria-hidden />
+              Schedule
+            </h2>
+            <div className="rounded-2xl border border-border bg-white p-5 shadow-[var(--shadow-card)]">
+              <label htmlFor="departure" className="label-field flex items-center gap-1.5">
+                <Clock className="h-4 w-4 text-muted" aria-hidden />
+                Departure date & time
+              </label>
+              <input
+                id="departure"
+                type="datetime-local"
+                className="input-field"
+                value={departureAt}
+                onChange={(e) => setDepartureAt(e.target.value)}
+                required
+              />
+            </div>
+          </section>
 
-          <LocationSelect
-            id="destination"
-            label="Ending point"
-            value={destinationId}
-            onChange={setDestinationId}
-            locations={locations}
-            placeholder="Select ending point"
-          />
+          <section>
+            <h2 className="form-section-title flex items-center gap-2">
+              <Users className="h-4 w-4" aria-hidden />
+              Ride details
+            </h2>
+            <div className="space-y-4 rounded-2xl border border-border bg-white p-5 shadow-[var(--shadow-card)]">
+              <div>
+                <label htmlFor="seats" className="label-field">
+                  Available seats
+                </label>
+                <input
+                  id="seats"
+                  type="number"
+                  min={2}
+                  max={8}
+                  className="input-field"
+                  value={totalSeats}
+                  onChange={(e) => setTotalSeats(Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <label htmlFor="notes" className="label-field">
+                  Notes (optional)
+                </label>
+                <textarea
+                  id="notes"
+                  className="input-field min-h-[88px] resize-y"
+                  placeholder="e.g. Can pick up from main gate"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+              </div>
+            </div>
+          </section>
 
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">
-              Departure date & time
-            </label>
-            <input
-              type="datetime-local"
-              className="input-field"
-              value={departureAt}
-              onChange={(e) => setDepartureAt(e.target.value)}
-              required
-            />
+          {error && (
+            <p className="rounded-xl border border-error/20 bg-error-container px-4 py-3 text-body-md text-error">
+              {error}
+            </p>
+          )}
+
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <Link href="/carpools" className="btn-secondary--inline text-center">
+              Cancel
+            </Link>
+            <button
+              type="submit"
+              className="btn-primary--inline min-w-[140px]"
+              disabled={isLoading || samePoints || !originId || !destinationId}
+            >
+              {isLoading ? "Creating…" : "Create ride"}
+            </button>
           </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">
-              Total seats
-            </label>
-            <input
-              type="number"
-              min={2}
-              max={8}
-              className="input-field"
-              value={totalSeats}
-              onChange={(e) => setTotalSeats(Number(e.target.value))}
-            />
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">
-              Notes (optional)
-            </label>
-            <textarea
-              className="input-field min-h-[80px]"
-              placeholder="e.g. Can pick up from main gate"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </div>
-
-          {error && <p className="text-sm text-red-600">{error}</p>}
-
-          <button type="submit" className="btn-primary" disabled={isLoading}>
-            {isLoading ? "Creating…" : "Create Carpool"}
-          </button>
         </form>
       </div>
-    </main>
+    </AppShell>
   );
 }

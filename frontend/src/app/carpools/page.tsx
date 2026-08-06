@@ -2,9 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Calendar, MapPin, Plus, Route } from "lucide-react";
 import { AuthGuard } from "@/components/auth/AuthGuard";
+import { AppShell } from "@/components/MainNav";
+import { RideCard } from "@/components/mobility/RideCard";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { groupLocations, type Location } from "@/components/LocationSelect";
-import { MainNav } from "@/components/MainNav";
+import { useAuth } from "@/context/AuthProvider";
 import { apiFetch } from "@/lib/api";
 
 type Carpool = {
@@ -25,11 +30,14 @@ export default function BrowseCarpoolsPage() {
 }
 
 function BrowseContent() {
+  const { user } = useAuth();
+  const hasActiveTrip = Boolean(user?.activeCarpoolId);
   const [carpools, setCarpools] = useState<Carpool[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [destination, setDestination] = useState("");
   const [date, setDate] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     apiFetch<{ destinations: Location[] }>("/api/v1/destinations")
@@ -38,31 +46,47 @@ function BrowseContent() {
   }, []);
 
   useEffect(() => {
+    setLoading(true);
     const params = new URLSearchParams({ status: "OPEN" });
     if (destination) params.set("destination", destination);
     if (date) params.set("date", date);
 
     apiFetch<{ carpools: Carpool[] }>(`/api/v1/carpools?${params}`)
       .then((data) => setCarpools(data.carpools))
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"));
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
+      .finally(() => setLoading(false));
   }, [destination, date]);
 
   const locationGroups = groupLocations(locations);
 
   return (
-    <main className="min-h-screen bg-slate-50">
-      <MainNav />
+    <AppShell>
+      <PageHeader
+        title="Browse rides"
+        subtitle="Find GIM students heading your way."
+        action={
+          !hasActiveTrip ? (
+            <Link href="/carpools/new" className="btn-primary--inline inline-flex items-center gap-2">
+              <Plus className="h-4 w-4" aria-hidden />
+              Create ride
+            </Link>
+          ) : undefined
+        }
+      />
 
-      <div className="mx-auto max-w-3xl space-y-4 px-4 py-6">
-        <h1 className="text-xl font-semibold text-slate-900">Browse Carpools</h1>
-
-        <div className="grid gap-3 sm:grid-cols-2">
+      <div className="filter-bar mb-8">
+        <div className="filter-field">
+          <label htmlFor="filter-destination" className="label-field flex items-center gap-1.5">
+            <MapPin className="h-4 w-4 text-muted" aria-hidden />
+            Destination
+          </label>
           <select
+            id="filter-destination"
             className="input-field"
             value={destination}
             onChange={(e) => setDestination(e.target.value)}
           >
-            <option value="">All ending points</option>
+            <option value="">All destinations</option>
             {locationGroups.map((group) => (
               <optgroup key={group.category} label={group.label}>
                 {group.locations.map((loc) => (
@@ -73,45 +97,72 @@ function BrowseContent() {
               </optgroup>
             ))}
           </select>
+        </div>
+        <div className="filter-field sm:max-w-xs">
+          <label htmlFor="filter-date" className="label-field flex items-center gap-1.5">
+            <Calendar className="h-4 w-4 text-muted" aria-hidden />
+            Departure date
+          </label>
           <input
+            id="filter-date"
             type="date"
             className="input-field"
             value={date}
             onChange={(e) => setDate(e.target.value)}
           />
         </div>
-
-        {error && <p className="text-sm text-red-600">{error}</p>}
-
-        <ul className="space-y-3">
-          {carpools.map((carpool) => (
-            <li key={carpool.id}>
-              <Link
-                href={`/carpools/${carpool.id}`}
-                className="block rounded-2xl border border-slate-200 bg-white p-4 shadow-sm hover:border-brand-300"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-slate-900">
-                      {carpool.origin} → {carpool.destination}
-                    </p>
-                    <p className="text-sm text-slate-500">
-                      {new Date(carpool.departureAt).toLocaleString()}
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-sm font-medium text-brand-700">
-                    {carpool.seatsAvailable} seats left
-                  </span>
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ul>
-
-        {carpools.length === 0 && !error && (
-          <p className="text-center text-sm text-slate-500">No carpools match your filters.</p>
-        )}
       </div>
-    </main>
+
+      {error && (
+        <p className="mb-6 rounded-xl border border-error/20 bg-error-container px-4 py-3 text-body-md text-error">
+          {error}
+        </p>
+      )}
+
+      {loading ? (
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="ride-card animate-pulse">
+              <div className="h-4 w-24 rounded bg-surface-muted" />
+              <div className="mt-4 h-8 w-32 rounded bg-surface-muted" />
+              <div className="mt-6 h-16 rounded bg-surface-muted" />
+            </div>
+          ))}
+        </div>
+      ) : carpools.length > 0 ? (
+        <div className="space-y-4">
+          {carpools.map((carpool) => (
+            <RideCard
+              key={carpool.id}
+              origin={carpool.origin}
+              destination={carpool.destination}
+              departureAt={carpool.departureAt}
+              seatsAvailable={carpool.seatsAvailable}
+              totalSeats={carpool.totalSeats}
+              href={`/carpools/${carpool.id}`}
+            />
+          ))}
+        </div>
+      ) : (
+        !error && (
+          <EmptyState
+            icon={Route}
+            title="No rides found"
+            description="Try changing your filters or create a ride for your journey."
+            action={
+              !hasActiveTrip ? (
+                <Link href="/carpools/new" className="btn-primary--inline">
+                  Create a ride
+                </Link>
+              ) : (
+                <Link href="/my-trip" className="btn-primary--inline">
+                  Go to My Trips
+                </Link>
+              )
+            }
+          />
+        )
+      )}
+    </AppShell>
   );
 }

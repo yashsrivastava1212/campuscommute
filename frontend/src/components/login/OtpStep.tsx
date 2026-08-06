@@ -101,25 +101,25 @@ export function OtpStep({
   const otpComplete = digits.every((d) => d !== "");
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-stack-md">
       <div className="text-center">
-        <h2 className="text-lg font-semibold text-slate-900">Check your email</h2>
-        <p className="mt-2 text-sm text-slate-600">
+        <h2 className="text-headline-md text-on-surface">Check your email</h2>
+        <p className="mt-2 text-body-md text-on-variant">
           We sent a 6-digit code to
           <br />
-          <span className="font-medium text-slate-900">{email}</span>
+          <span className="font-medium text-on-surface">{email}</span>
         </p>
       </div>
 
       {devOtp && (
         <div
-          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm text-amber-900"
+          className="rounded-lg border border-amber-accent/30 bg-amber-light px-4 py-3 text-center text-body-md text-on-surface"
           role="status"
         >
           <p className="font-medium">Demo mode — email could not be sent</p>
           <p className="mt-1">
             Your code is{" "}
-            <span className="font-mono text-base font-bold tracking-widest">{devOtp}</span>
+            <span className="font-mono text-mono-sm font-bold tracking-widest">{devOtp}</span>
           </p>
         </div>
       )}
@@ -145,16 +145,16 @@ export function OtpStep({
       </div>
 
       {apiError && (
-        <p className="text-center text-sm text-red-600" role="alert">
+        <p className="text-center text-body-md text-error" role="alert">
           {apiError}
         </p>
       )}
 
-      <p className="text-center text-sm text-slate-500">
+      <p className="text-center text-body-md text-on-variant">
         {secondsLeft > 0 ? (
           <>Code expires in {formatTime(secondsLeft)}</>
         ) : (
-          <span className="text-amber-600">Code expired. Request a new one.</span>
+          <span className="text-amber-accent">Code expired. Request a new one.</span>
         )}
       </p>
 
@@ -167,16 +167,14 @@ export function OtpStep({
         {isLoading ? "Verifying…" : "Verify & Sign In"}
       </button>
 
-      <p className="text-center text-sm">
+      <p className="text-center text-body-md">
         {resendCooldown > 0 ? (
-          <span className="text-slate-400">
-            Resend code in {resendCooldown}s
-          </span>
+          <span className="text-slate-member">Resend code in {resendCooldown}s</span>
         ) : (
           <button
             type="button"
             onClick={handleResend}
-            className="font-medium text-brand-600 hover:text-brand-700"
+            className="font-medium text-emerald-dark transition-colors hover:text-emerald"
             disabled={isLoading}
           >
             Didn&apos;t receive it? Resend code
@@ -187,7 +185,7 @@ export function OtpStep({
       <button
         type="button"
         onClick={onChangeEmail}
-        className="w-full text-center text-sm text-slate-500 hover:text-slate-700"
+        className="w-full text-center text-body-md text-on-variant transition-colors hover:text-on-surface"
         disabled={isLoading}
       >
         ← Use a different email
