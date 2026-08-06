@@ -3,9 +3,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
-import postgres from "postgres";
 import * as schema from "./schema.js";
 import { seedDatabase } from "./seed-data.js";
+import { createPostgresClient } from "./postgres-client.js";
 
 const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -35,7 +35,7 @@ async function initDb() {
     process.env.DATABASE_URL ??
     "postgresql://campuscommute:campuscommute@localhost:5432/campuscommute";
 
-  const client = postgres(connectionString, { max: 10 });
+  const client = createPostgresClient(connectionString, 10);
   return drizzlePostgres(client, { schema });
 }
 

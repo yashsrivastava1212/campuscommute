@@ -2,13 +2,10 @@ import "../env.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
-import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
+import { createPostgresClient, resolveMigrationsFolder } from "./postgres-client.js";
 
-const migrationsFolder = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../drizzle"
-);
+const fromDir = path.dirname(fileURLToPath(import.meta.url));
 
 async function runMigrations() {
   const connectionString = process.env.DATABASE_URL;
@@ -17,7 +14,10 @@ async function runMigrations() {
     process.exit(1);
   }
 
-  const migrationClient = postgres(connectionString, { max: 1 });
+  const migrationsFolder = resolveMigrationsFolder(fromDir);
+  console.log(`Using migrations folder: ${migrationsFolder}`);
+
+  const migrationClient = createPostgresClient(connectionString, 1);
   const db = drizzle(migrationClient);
 
   console.log("Running migrations...");
