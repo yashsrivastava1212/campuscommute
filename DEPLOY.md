@@ -1,23 +1,38 @@
 # Deploying CampusCommute
 
-Frontend on **Vercel** · Backend on **Railway**
+Frontend and backend on **Railway**
+
+## Project layout on Railway
+
+Create **one Railway project** with three items:
+
+| Item | Purpose |
+|------|---------|
+| **PostgreSQL** | Database |
+| **Backend service** | API — uses root `railway.toml` |
+| **Frontend service** | Next.js — uses `frontend/railway.toml` |
+
+Both web services deploy from the same GitHub repo.
+
+---
 
 ## 1. Backend (Railway)
 
 1. Create a project at [railway.app](https://railway.app) and connect this GitHub repo.
-2. Add **PostgreSQL** to the project (New → Database → PostgreSQL).
-3. Create a **service** from the repo. Railway reads `railway.toml` at the repo root.
-4. Link the PostgreSQL `DATABASE_URL` variable to the backend service.
-5. Set these environment variables on the backend service:
+2. Add **PostgreSQL** (New → Database → PostgreSQL).
+3. Create a **backend service** from the repo.
+4. **Settings → Railway Config File:** `railway.toml` (repo root — default).
+5. Link PostgreSQL **`DATABASE_URL`** to the backend service (Variables → Add Reference).
+6. Set these environment variables on the **backend** service:
 
 | Variable | Value |
 |----------|--------|
 | `NODE_ENV` | `production` |
-| `DATABASE_URL` | *(from PostgreSQL plugin)* |
+| `DATABASE_URL` | *(reference from PostgreSQL)* |
 | `JWT_SECRET` | strong random string |
 | `JWT_REFRESH_SECRET` | strong random string |
 | `ENCRYPTION_KEY` | 32-char hex string |
-| `CORS_ORIGIN` | your Vercel URL, e.g. `https://campuscommute.vercel.app` |
+| `CORS_ORIGIN` | your Railway **frontend** URL |
 | `ALLOWED_EMAIL_DOMAIN` | `gim.ac.in` |
 | `RESEND_API_KEY` | your Resend API key |
 | `EMAIL_FROM` | `CampusCommute <onboarding@resend.dev>` or verified domain |
@@ -25,31 +40,45 @@ Frontend on **Vercel** · Backend on **Railway**
 
 Do **not** set `USE_PGLITE` in production.
 
-6. Deploy and copy the public backend URL (e.g. `https://campuscommute-api.up.railway.app`).
+7. **Settings → Networking → Generate Domain** and copy the backend URL.
 
 On each deploy, the server runs migrations and seeds Goa locations automatically before accepting traffic.
 
-## 2. Frontend (Vercel)
+---
 
-1. Import the repo at [vercel.com](https://vercel.com).
-2. Set **Root Directory** to `frontend`.
-3. Add environment variable:
+## 2. Frontend (Railway)
+
+1. In the same project, click **+ New → GitHub Repo** and select **`campuscommute`** again.
+2. **Settings → Railway Config File:** `frontend/railway.toml`  
+   *(Required — otherwise the root config starts the backend on this service.)*
+3. Set environment variables on the **frontend** service:
 
 | Variable | Value |
 |----------|--------|
-| `NEXT_PUBLIC_API_URL` | your Railway backend URL (no trailing slash) |
+| `NEXT_PUBLIC_API_URL` | your Railway **backend** URL (no trailing slash) |
 
-4. Deploy. Vercel uses `frontend/vercel.json` to install dependencies from the monorepo root.
+Do **not** add backend variables (`DATABASE_URL`, `JWT_SECRET`, etc.) to the frontend service.
+
+4. **Settings → Networking → Generate Domain** and copy the frontend URL.
+5. Update backend **`CORS_ORIGIN`** to this frontend URL and redeploy the backend.
+
+`NEXT_PUBLIC_API_URL` is baked in at build time — redeploy the frontend after changing it.
+
+---
 
 ## 3. Connect them
 
-After the first Vercel deploy, update Railway `CORS_ORIGIN` to match your exact Vercel URL (include `https://`). For preview deployments, use a comma-separated list:
-
 ```env
-CORS_ORIGIN=https://campuscommute.vercel.app,https://campuscommute-git-main-yourteam.vercel.app
+# Frontend service
+NEXT_PUBLIC_API_URL=https://your-backend.up.railway.app
+
+# Backend service
+CORS_ORIGIN=https://your-frontend.up.railway.app
 ```
 
-Redeploy the backend after changing `CORS_ORIGIN`.
+Redeploy both services after changing either URL.
+
+---
 
 ## 4. Admin user
 
@@ -59,10 +88,16 @@ Connect to Railway PostgreSQL and run:
 UPDATE users SET is_admin = true WHERE campus_email = 'your.name@gim.ac.in';
 ```
 
+---
+
 ## 5. Health checks
 
-- `GET /health` — liveness (used by Railway)
-- `GET /health/ready` — includes database connectivity
+| Service | Path |
+|---------|------|
+| Backend | `GET /health` and `GET /health/ready` |
+| Frontend | `GET /login` |
+
+---
 
 ## Local development
 

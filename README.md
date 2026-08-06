@@ -51,4 +51,4 @@ DATABASE_URL=postgresql://campuscommute:campuscommute@localhost:5432/campuscommu
 
 ## Production deployment
 
-Deploy the **backend on Railway** and **frontend on Vercel**. See [DEPLOY.md](./DEPLOY.md) for step-by-step instructions.
+Deploy **frontend and backend on Railway**. See [DEPLOY.md](./DEPLOY.md) for step-by-step instructions.
