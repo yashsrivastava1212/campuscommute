@@ -9,7 +9,7 @@ import { BrandLogo } from "@/components/brand/BrandLogo";
 import { EmailStep } from "@/components/login/EmailStep";
 import { OtpStep } from "@/components/login/OtpStep";
 import { useAuth } from "@/context/AuthProvider";
-import { API_URL, loginWithOtp } from "@/lib/api";
+import { API_URL, loginWithOtp, readApiError } from "@/lib/api";
 
 
 
@@ -41,24 +41,18 @@ function LoginContent() {
     try {
 
       const response = await fetch(`${API_URL}/api/v1/auth/send-otp`, {
-
         method: "POST",
-
         headers: { "Content-Type": "application/json" },
-
         body: JSON.stringify({ email: targetEmail }),
-
       });
 
-
-
-      const data = await response.json().catch(() => ({}));
-
       if (!response.ok) {
-
-        throw new Error(data.message ?? "Failed to send verification code.");
-
+        throw new Error(
+          await readApiError(response, "Failed to send verification code.")
+        );
       }
+
+      const data = await response.json();
 
 
 

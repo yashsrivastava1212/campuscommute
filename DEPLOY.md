@@ -34,15 +34,29 @@ Both web services deploy from the same GitHub repo.
 | `ENCRYPTION_KEY` | 32-char hex string |
 | `CORS_ORIGIN` | your Railway **frontend** URL |
 | `ALLOWED_EMAIL_DOMAIN` | `gim.ac.in` |
-| `RESEND_API_KEY` | your Resend API key |
-| `EMAIL_FROM` | `CampusCommute <onboarding@resend.dev>` or verified domain |
-| `ALLOW_DEV_OTP` | `false` only if Resend is verified for `@gim.ac.in`; otherwise leave unset or `true` so OTP appears on screen when email fails |
+| `RESEND_API_KEY` | your Resend API key (`re_...`) — **backend service only** |
+| `EMAIL_FROM` | `CampusCommute <noreply@gim.ac.in>` after domain verification (not `onboarding@resend.dev`) |
+| `ALLOW_DEV_OTP` | `false` for real email delivery |
 
 Do **not** set `USE_PGLITE` in production.
 
 7. **Settings → Networking → Generate Domain** and copy the backend URL.
 
 On each deploy, the server runs migrations and seeds Goa locations automatically before accepting traffic.
+
+### Resend email (required for real OTP)
+
+`onboarding@resend.dev` **cannot** send to `@gim.ac.in` inboxes. To deliver OTP by email:
+
+1. Verify **`gim.ac.in`** (or a subdomain like `mail.gim.ac.in`) at [resend.com/domains](https://resend.com/domains)
+2. On the **backend service**, set:
+   - `RESEND_API_KEY=re_...`
+   - `EMAIL_FROM=CampusCommute <noreply@gim.ac.in>`
+   - `ALLOW_DEV_OTP=false`
+3. Redeploy the backend
+4. Check `GET https://YOUR-BACKEND-URL/health/email` — `canDeliverToGimInbox` should be `true`
+
+Put `RESEND_API_KEY` on the **backend** service, not the frontend.
 
 ---
 

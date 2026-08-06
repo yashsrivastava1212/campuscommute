@@ -3,30 +3,83 @@ import "../env.js";
 
 const GIM_EMAIL_ERROR = "Please use your GIM email address.";
 
-function isOnScreenOtpEnabled(): boolean {
-  return process.env.ALLOW_DEV_OTP !== "false";
+function stripQuotes(value: string): string {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
+export function getResendApiKey(): string | null {
+  const raw = process.env.RESEND_API_KEY?.trim();
+  if (!raw) return null;
+  const apiKey = stripQuotes(raw);
+  return apiKey.startsWith("re_") ? apiKey : null;
+}
+
+export function getFromEmail(): string {
+  const raw = process.env.EMAIL_FROM?.trim();
+  return stripQuotes(raw ?? "CampusCommute <onboarding@resend.dev>");
+}
+
+export function isDevOtpAllowed(): boolean {
+  return process.env.ALLOW_DEV_OTP === "true";
+}
+
+export function isUsingResendTestSender(fromEmail = getFromEmail()): boolean {
+  return /@resend\.dev/i.test(fromEmail);
+}
+
+export function getEmailDeliveryStatus() {
+  const fromEmail = getFromEmail();
+  const resendConfigured = Boolean(getResendApiKey());
+  const usingTestSender = isUsingResendTestSender(fromEmail);
+
+  return {
+    resendConfigured,
+    fromEmail,
+    allowDevOtp: isDevOtpAllowed(),
+    usingTestSender,
+    canDeliverToGimInbox:
+      resendConfigured && !usingTestSender,
+    guidance: !resendConfigured
+      ? "Set RESEND_API_KEY on the backend service."
+      : usingTestSender
+        ? "EMAIL_FROM uses resend.dev, which cannot deliver to @gim.ac.in. Verify gim.ac.in in Resend and set EMAIL_FROM to e.g. CampusCommute <noreply@gim.ac.in>."
+        : "Resend is configured for production delivery.",
+  };
 }
 
 function getResendClient(): Resend | null {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
-  if (!apiKey?.startsWith("re_")) {
-    return null;
-  }
-  return new Resend(apiKey);
+  const apiKey = getResendApiKey();
+  return apiKey ? new Resend(apiKey) : null;
 }
 
-function normalizeFromEmail(value: string | undefined): string {
-  const raw = value?.trim() ?? "CampusCommute <onboarding@resend.dev>";
-  if (
-    (raw.startsWith('"') && raw.endsWith('"')) ||
-    (raw.startsWith("'") && raw.endsWith("'"))
-  ) {
-    return raw.slice(1, -1);
+function formatResendError(message: string): string {
+  if (/only send testing emails to your own email address/i.test(message)) {
+    return [
+      "Resend test sender cannot deliver to @gim.ac.in addresses.",
+      "Verify gim.ac.in in your Resend dashboard and set EMAIL_FROM to an address on that verified domain,",
+      "for example: CampusCommute <noreply@gim.ac.in>",
+    ].join(" ");
   }
-  return raw;
-}
 
-const FROM_EMAIL = normalizeFromEmail(process.env.EMAIL_FROM);
+  if (/verify a domain/i.test(message) || /domain is not verified/i.test(message)) {
+    return [
+      "Your Resend sending domain is not verified.",
+      "Add and verify gim.ac.in in Resend, then set EMAIL_FROM to an address on that domain.",
+    ].join(" ");
+  }
+
+  if (/invalid api key/i.test(message) || /api key is invalid/i.test(message)) {
+    return "RESEND_API_KEY is invalid. Create a new API key in Resend and update the backend service on Railway.";
+  }
+
+  return `Email delivery failed: ${message}`;
+}
 
 function buildOtpHtml(otp: string): string {
   return `
@@ -40,6 +93,17 @@ function buildOtpHtml(otp: string): string {
   `;
 }
 
+function buildOtpText(otp: string): string {
+  return [
+    "CampusCommute",
+    "",
+    `Your verification code is: ${otp}`,
+    "",
+    "This code expires in 10 minutes.",
+    "Goa Institute of Management",
+  ].join("\n");
+}
+
 export async function sendOtpEmail(
   email: string,
   otp: string
@@ -49,41 +113,53 @@ export async function sendOtpEmail(
   }
 
   const resend = getResendClient();
+  const fromEmail = getFromEmail();
   const subject = "Your CampusCommute verification code";
   const html = buildOtpHtml(otp);
+  const text = buildOtpText(otp);
 
-  if (resend) {
-    const { error } = await resend.emails.send({
-      from: FROM_EMAIL,
-      to: email,
-      subject,
-      html,
-    });
-
-    if (!error) {
-      return { delivered: true };
-    }
-
-    if (isOnScreenOtpEnabled()) {
-      console.warn(
-        `[WARN] Resend failed (${error.message}). Showing OTP on screen for ${email}.`
-      );
+  if (!resend) {
+    if (isDevOtpAllowed()) {
+      console.warn(`[DEV] RESEND_API_KEY missing. OTP for ${email}: ${otp}`);
       return { delivered: false };
     }
 
-    throw new Error(`Failed to send verification email: ${error.message}`);
+    throw new Error(
+      "RESEND_API_KEY is not set on the backend service. Add it in Railway backend Variables."
+    );
   }
 
-  if (isOnScreenOtpEnabled()) {
-    console.warn(
-      `[WARN] RESEND_API_KEY not configured. Showing OTP on screen for ${email}.`
+  if (isUsingResendTestSender(fromEmail) && !isDevOtpAllowed()) {
+    throw new Error(
+      [
+        "EMAIL_FROM is using onboarding@resend.dev, which cannot send OTP to @gim.ac.in.",
+        "Verify gim.ac.in in Resend and set EMAIL_FROM to CampusCommute <noreply@gim.ac.in> on the backend service.",
+      ].join(" ")
     );
+  }
+
+  const { data, error } = await resend.emails.send({
+    from: fromEmail,
+    to: email,
+    subject,
+    html,
+    text,
+  });
+
+  if (!error && data?.id) {
+    console.log(`[OK] OTP email queued for ${email} (${data.id})`);
+    return { delivered: true };
+  }
+
+  const resendMessage = error?.message ?? "Unknown Resend error";
+  console.error(`[ERROR] Resend failed for ${email}: ${resendMessage}`);
+
+  if (isDevOtpAllowed()) {
+    console.warn(`[DEV] Falling back to on-screen OTP for ${email}: ${otp}`);
     return { delivered: false };
   }
 
-  throw new Error(
-    "Email service not configured. Set RESEND_API_KEY on the backend, or set ALLOW_DEV_OTP=true."
-  );
+  throw new Error(formatResendError(resendMessage));
 }
 
 export { GIM_EMAIL_ERROR };

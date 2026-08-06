@@ -1,6 +1,7 @@
 import "./env.js";
 import { startOtpCleanupJob } from "./jobs/otp-cleanup.js";
 import { startLifecycleJobs } from "./jobs/lifecycle.js";
+import { getEmailDeliveryStatus, getResendApiKey } from "./lib/email.js";
 
 const PORT = Number(process.env.PORT ?? 3001);
 const HOST = process.env.HOST ?? "0.0.0.0";
@@ -16,16 +17,15 @@ async function start() {
   startOtpCleanupJob();
   startLifecycleJobs();
 
-  if (process.env.RESEND_API_KEY?.startsWith("re_")) {
-    console.log("[OK] Resend configured — OTP emails will be sent when delivery succeeds");
-  } else if (process.env.ALLOW_DEV_OTP === "false") {
-    console.warn(
-      "[WARN] RESEND_API_KEY missing and ALLOW_DEV_OTP=false — OTP email sends will fail"
-    );
+  const emailStatus = getEmailDeliveryStatus();
+  if (emailStatus.canDeliverToGimInbox) {
+    console.log(`[OK] Resend configured — sending from ${emailStatus.fromEmail}`);
   } else {
-    console.warn(
-      "[WARN] RESEND_API_KEY missing — OTP will appear on the login screen when email cannot be sent"
-    );
+    console.warn(`[WARN] Email delivery not ready: ${emailStatus.guidance}`);
+  }
+
+  if (!getResendApiKey() && process.env.ALLOW_DEV_OTP === "true") {
+    console.warn("[WARN] ALLOW_DEV_OTP=true — OTP may appear on screen when email fails");
   }
 
   try {

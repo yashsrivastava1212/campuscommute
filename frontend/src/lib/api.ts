@@ -8,6 +8,27 @@ import {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
+export async function readApiError(response: Response, fallback: string): Promise<string> {
+  const raw = await response.text();
+  if (!raw) {
+    if (response.status === 404) {
+      return `API not found at ${API_URL}. Set NEXT_PUBLIC_API_URL to your Railway backend URL and redeploy the frontend.`;
+    }
+    return `${fallback} (HTTP ${response.status})`;
+  }
+
+  try {
+    const data = JSON.parse(raw) as { message?: string };
+    if (typeof data.message === "string" && data.message.trim()) {
+      return data.message;
+    }
+  } catch {
+    return `${fallback} (HTTP ${response.status}: invalid server response)`;
+  }
+
+  return `${fallback} (HTTP ${response.status})`;
+}
+
 async function refreshSession(session: AuthSession): Promise<AuthSession | null> {
   const response = await fetch(`${API_URL}/api/v1/auth/refresh`, {
     method: "POST",
