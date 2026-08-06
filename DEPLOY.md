@@ -34,8 +34,6 @@ Both web services deploy from the same GitHub repo.
 | `ENCRYPTION_KEY` | 32-char hex string |
 | `CORS_ORIGIN` | your Railway **frontend** URL |
 | `ALLOWED_EMAIL_DOMAIN` | `gim.ac.in` |
-| `RESEND_API_KEY` | your Resend API key (`re_...`) — **backend service only** |
-| `EMAIL_FROM` | `CampusCommute <noreply@gim.ac.in>` after domain verification (not `onboarding@resend.dev`) |
 | `ALLOW_DEV_OTP` | `false` for real email delivery |
 
 Do **not** set `USE_PGLITE` in production.
@@ -44,19 +42,41 @@ Do **not** set `USE_PGLITE` in production.
 
 On each deploy, the server runs migrations and seeds Goa locations automatically before accepting traffic.
 
-### Resend email (required for real OTP)
+### Free OTP email via Gmail SMTP (recommended — no IT, no paid domain)
 
-`onboarding@resend.dev` **cannot** send to `@gim.ac.in` inboxes. To deliver OTP by email:
+Use this instead of Resend if you cannot verify `gim.ac.in` with college IT.
 
-1. Verify **`gim.ac.in`** (or a subdomain like `mail.gim.ac.in`) at [resend.com/domains](https://resend.com/domains)
-2. On the **backend service**, set:
-   - `RESEND_API_KEY=re_...`
-   - `EMAIL_FROM=CampusCommute <noreply@gim.ac.in>`
-   - `ALLOW_DEV_OTP=false`
-3. Redeploy the backend
-4. Check `GET https://YOUR-BACKEND-URL/health/email` — `canDeliverToGimInbox` should be `true`
+**Only `@gim.ac.in` can log in** (enforced by the app). Emails are **sent to** GIM inboxes **from** your Gmail address.
 
-Put `RESEND_API_KEY` on the **backend** service, not the frontend.
+1. Use a **Gmail account** (create one if needed).
+2. Turn on **2-Step Verification**: [Google Account → Security](https://myaccount.google.com/security)
+3. Create an **App Password**: Google Account → Security → App passwords → Mail → copy the 16-character password.
+4. On the **backend service** in Railway, set:
+
+| Variable | Value |
+|----------|--------|
+| `SMTP_HOST` | `smtp.gmail.com` |
+| `SMTP_PORT` | `587` |
+| `SMTP_USER` | your Gmail address, e.g. `campuscommute.app@gmail.com` |
+| `SMTP_PASS` | the 16-character Google App Password (no spaces) |
+| `EMAIL_FROM` | `CampusCommute <campuscommute.app@gmail.com>` |
+| `ALLOW_DEV_OTP` | `false` |
+
+5. **Remove** `RESEND_API_KEY` from Railway (or leave empty) so Gmail SMTP is used.
+6. Redeploy the backend.
+7. Check `GET https://YOUR-BACKEND-URL/health/email` — `smtpConfigured: true`, `canDeliverToGimInbox: true`
+
+Gmail free limit: about **500 emails/day** — enough for a student project.
+
+### Resend (optional — needs a domain you control)
+
+`onboarding@resend.dev` **cannot** send to `@gim.ac.in` inboxes. Resend only works for all GIM users if you verify **your own domain** (paid) or `gim.ac.in` (needs IT).
+
+1. Verify your domain at [resend.com/domains](https://resend.com/domains)
+2. Set `RESEND_API_KEY`, `EMAIL_FROM=CampusCommute <noreply@yourdomain.com>`
+3. Check `/health/email`
+
+Put email variables on the **backend** service only, not the frontend.
 
 ---
 

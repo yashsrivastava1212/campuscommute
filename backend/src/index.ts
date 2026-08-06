@@ -19,7 +19,8 @@ async function start() {
 
   const emailStatus = getEmailDeliveryStatus();
   if (emailStatus.canDeliverToGimInbox) {
-    console.log(`[OK] Resend configured — sending from ${emailStatus.fromEmail}`);
+    const via = emailStatus.smtpConfigured ? "Gmail SMTP" : "Resend";
+    console.log(`[OK] Email delivery ready via ${via} — from ${emailStatus.fromEmail}`);
   } else {
     console.warn(`[WARN] Email delivery not ready: ${emailStatus.guidance}`);
   }

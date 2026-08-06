@@ -1,3 +1,4 @@
+import nodemailer from "nodemailer";
 import { Resend } from "resend";
 import "../env.js";
 
@@ -33,23 +34,45 @@ export function isUsingResendTestSender(fromEmail = getFromEmail()): boolean {
   return /@resend\.dev/i.test(fromEmail);
 }
 
+export function isSmtpConfigured(): boolean {
+  return Boolean(
+    process.env.SMTP_HOST?.trim() &&
+      process.env.SMTP_USER?.trim() &&
+      process.env.SMTP_PASS?.trim()
+  );
+}
+
 export function getEmailDeliveryStatus() {
   const fromEmail = getFromEmail();
   const resendConfigured = Boolean(getResendApiKey());
+  const smtpConfigured = isSmtpConfigured();
   const usingTestSender = isUsingResendTestSender(fromEmail);
+  const canDeliverToGimInbox =
+    smtpConfigured || (resendConfigured && !usingTestSender);
+
+  let guidance =
+    "Configure free Gmail SMTP (SMTP_HOST, SMTP_USER, SMTP_PASS, EMAIL_FROM) or verified Resend domain.";
+
+  if (smtpConfigured) {
+    guidance = "Gmail SMTP is configured — OTP can be sent to @gim.ac.in inboxes.";
+  } else if (resendConfigured && !usingTestSender) {
+    guidance = "Resend is configured for production delivery.";
+  } else if (resendConfigured && usingTestSender) {
+    guidance =
+      "Resend test sender cannot email @gim.ac.in. Use free Gmail SMTP instead, or verify your own domain in Resend.";
+  } else if (!resendConfigured) {
+    guidance =
+      "Set Gmail SMTP variables on the backend for a free setup, or add RESEND_API_KEY with a verified domain.";
+  }
 
   return {
     resendConfigured,
+    smtpConfigured,
     fromEmail,
     allowDevOtp: isDevOtpAllowed(),
     usingTestSender,
-    canDeliverToGimInbox:
-      resendConfigured && !usingTestSender,
-    guidance: !resendConfigured
-      ? "Set RESEND_API_KEY on the backend service."
-      : usingTestSender
-        ? "EMAIL_FROM uses resend.dev, which cannot deliver to @gim.ac.in. Verify gim.ac.in in Resend and set EMAIL_FROM to e.g. CampusCommute <noreply@gim.ac.in>."
-        : "Resend is configured for production delivery.",
+    canDeliverToGimInbox,
+    guidance,
   };
 }
 
@@ -62,20 +85,19 @@ function formatResendError(message: string): string {
   if (/only send testing emails to your own email address/i.test(message)) {
     return [
       "Resend test sender cannot deliver to @gim.ac.in addresses.",
-      "Verify gim.ac.in in your Resend dashboard and set EMAIL_FROM to an address on that verified domain,",
-      "for example: CampusCommute <noreply@gim.ac.in>",
+      "Use the free Gmail SMTP option instead (see DEPLOY.md).",
     ].join(" ");
   }
 
   if (/verify a domain/i.test(message) || /domain is not verified/i.test(message)) {
     return [
       "Your Resend sending domain is not verified.",
-      "Add and verify gim.ac.in in Resend, then set EMAIL_FROM to an address on that domain.",
+      "Use free Gmail SMTP instead, or verify your own domain in Resend.",
     ].join(" ");
   }
 
   if (/invalid api key/i.test(message) || /api key is invalid/i.test(message)) {
-    return "RESEND_API_KEY is invalid. Create a new API key in Resend and update the backend service on Railway.";
+    return "RESEND_API_KEY is invalid. Create a new API key in Resend or switch to Gmail SMTP.";
   }
 
   return `Email delivery failed: ${message}`;
@@ -104,6 +126,28 @@ function buildOtpText(otp: string): string {
   ].join("\n");
 }
 
+async function sendViaSmtp(
+  to: string,
+  subject: string,
+  html: string,
+  text: string
+): Promise<void> {
+  const host = stripQuotes(process.env.SMTP_HOST!.trim());
+  const port = Number(process.env.SMTP_PORT ?? 587);
+  const user = stripQuotes(process.env.SMTP_USER!.trim());
+  const pass = stripQuotes(process.env.SMTP_PASS!.trim());
+  const from = getFromEmail();
+
+  const transport = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+  });
+
+  await transport.sendMail({ from, to, subject, html, text });
+}
+
 export async function sendOtpEmail(
   email: string,
   otp: string
@@ -112,28 +156,53 @@ export async function sendOtpEmail(
     throw new Error(GIM_EMAIL_ERROR);
   }
 
-  const resend = getResendClient();
-  const fromEmail = getFromEmail();
   const subject = "Your CampusCommute verification code";
   const html = buildOtpHtml(otp);
   const text = buildOtpText(otp);
 
+  if (isSmtpConfigured()) {
+    try {
+      await sendViaSmtp(email, subject, html, text);
+      console.log(`[OK] OTP email sent via SMTP to ${email}`);
+      return { delivered: true };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown SMTP error";
+      console.error(`[ERROR] SMTP failed for ${email}: ${message}`);
+
+      if (isDevOtpAllowed()) {
+        console.warn(`[DEV] Falling back to on-screen OTP for ${email}: ${otp}`);
+        return { delivered: false };
+      }
+
+      throw new Error(
+        `Gmail SMTP failed: ${message}. Check SMTP_USER, SMTP_PASS (Google App Password), and EMAIL_FROM on Railway.`
+      );
+    }
+  }
+
+  const resend = getResendClient();
+  const fromEmail = getFromEmail();
+
   if (!resend) {
     if (isDevOtpAllowed()) {
-      console.warn(`[DEV] RESEND_API_KEY missing. OTP for ${email}: ${otp}`);
+      console.warn(`[DEV] No email provider configured. OTP for ${email}: ${otp}`);
       return { delivered: false };
     }
 
     throw new Error(
-      "RESEND_API_KEY is not set on the backend service. Add it in Railway backend Variables."
+      [
+        "No email provider configured.",
+        "For a free setup, add Gmail SMTP variables on Railway (SMTP_HOST, SMTP_USER, SMTP_PASS, EMAIL_FROM).",
+      ].join(" ")
     );
   }
 
   if (isUsingResendTestSender(fromEmail) && !isDevOtpAllowed()) {
     throw new Error(
       [
-        "EMAIL_FROM is using onboarding@resend.dev, which cannot send OTP to @gim.ac.in.",
-        "Verify gim.ac.in in Resend and set EMAIL_FROM to CampusCommute <noreply@gim.ac.in> on the backend service.",
+        "Resend test sender cannot send OTP to @gim.ac.in.",
+        "Use free Gmail SMTP instead — remove RESEND_API_KEY and set SMTP_HOST, SMTP_USER, SMTP_PASS, EMAIL_FROM.",
       ].join(" ")
     );
   }
