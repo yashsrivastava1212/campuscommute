@@ -17,10 +17,14 @@ async function start() {
   startLifecycleJobs();
 
   if (process.env.RESEND_API_KEY?.startsWith("re_")) {
-    console.log("[OK] Resend configured — OTP emails will be sent via Resend");
+    console.log("[OK] Resend configured — OTP emails will be sent when delivery succeeds");
+  } else if (process.env.ALLOW_DEV_OTP === "false") {
+    console.warn(
+      "[WARN] RESEND_API_KEY missing and ALLOW_DEV_OTP=false — OTP email sends will fail"
+    );
   } else {
     console.warn(
-      "[WARN] RESEND_API_KEY missing — OTP will use demo mode (on-screen code)"
+      "[WARN] RESEND_API_KEY missing — OTP will appear on the login screen when email cannot be sent"
     );
   }
 

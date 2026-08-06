@@ -79,15 +79,10 @@ function LoginContent() {
     } catch (error) {
 
       const message =
-
         error instanceof TypeError && error.message === "Failed to fetch"
-
-          ? "Cannot reach the server. Make sure the backend is running on port 3001."
-
+          ? "Cannot reach the API. Check NEXT_PUBLIC_API_URL on the frontend service and CORS_ORIGIN on the backend."
           : error instanceof Error
-
             ? error.message
-
             : "Something went wrong. Try again.";
 
       setApiError(message);

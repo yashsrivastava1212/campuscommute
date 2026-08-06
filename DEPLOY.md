@@ -36,7 +36,7 @@ Both web services deploy from the same GitHub repo.
 | `ALLOWED_EMAIL_DOMAIN` | `gim.ac.in` |
 | `RESEND_API_KEY` | your Resend API key |
 | `EMAIL_FROM` | `CampusCommute <onboarding@resend.dev>` or verified domain |
-| `ALLOW_DEV_OTP` | `false` |
+| `ALLOW_DEV_OTP` | `false` only if Resend is verified for `@gim.ac.in`; otherwise leave unset or `true` so OTP appears on screen when email fails |
 
 Do **not** set `USE_PGLITE` in production.
 

@@ -3,9 +3,9 @@ import "../env.js";
 
 const GIM_EMAIL_ERROR = "Please use your GIM email address.";
 
-const isDevOtpAllowed =
-  process.env.NODE_ENV !== "production" &&
-  process.env.ALLOW_DEV_OTP === "true";
+function isOnScreenOtpEnabled(): boolean {
+  return process.env.ALLOW_DEV_OTP !== "false";
+}
 
 function getResendClient(): Resend | null {
   const apiKey = process.env.RESEND_API_KEY?.trim();
@@ -15,8 +15,18 @@ function getResendClient(): Resend | null {
   return new Resend(apiKey);
 }
 
-const FROM_EMAIL =
-  process.env.EMAIL_FROM ?? "CampusCommute <onboarding@resend.dev>";
+function normalizeFromEmail(value: string | undefined): string {
+  const raw = value?.trim() ?? "CampusCommute <onboarding@resend.dev>";
+  if (
+    (raw.startsWith('"') && raw.endsWith('"')) ||
+    (raw.startsWith("'") && raw.endsWith("'"))
+  ) {
+    return raw.slice(1, -1);
+  }
+  return raw;
+}
+
+const FROM_EMAIL = normalizeFromEmail(process.env.EMAIL_FROM);
 
 function buildOtpHtml(otp: string): string {
   return `
@@ -54,21 +64,25 @@ export async function sendOtpEmail(
       return { delivered: true };
     }
 
-    if (isDevOtpAllowed) {
-    console.warn(`[DEV] Resend failed (${error.message}). OTP for ${email}: ${otp}`);
-    return { delivered: false };
-  }
+    if (isOnScreenOtpEnabled()) {
+      console.warn(
+        `[WARN] Resend failed (${error.message}). Showing OTP on screen for ${email}.`
+      );
+      return { delivered: false };
+    }
 
     throw new Error(`Failed to send verification email: ${error.message}`);
   }
 
-  if (isDevOtpAllowed) {
-    console.log(`[DEV] No Resend key. OTP for ${email}: ${otp}`);
+  if (isOnScreenOtpEnabled()) {
+    console.warn(
+      `[WARN] RESEND_API_KEY not configured. Showing OTP on screen for ${email}.`
+    );
     return { delivered: false };
   }
 
   throw new Error(
-    "Email service not configured. Set RESEND_API_KEY in .env, or ALLOW_DEV_OTP=true for local demo."
+    "Email service not configured. Set RESEND_API_KEY on the backend, or set ALLOW_DEV_OTP=true."
   );
 }
 
