@@ -44,7 +44,7 @@ Do **not** set `USE_PGLITE` in production.
 
 **Important:** Link your Postgres database to the web service so `DATABASE_URL` is set. On Render, use the **Internal Database URL** from the Postgres dashboard.
 
-Each deploy runs migrations and seeds locations (`npm run deploy -w backend`).
+Each deploy runs migrations and seeds locations automatically when the server starts in production.
 
 Health check: `GET /health`
 

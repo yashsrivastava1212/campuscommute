@@ -7,7 +7,7 @@ services:
     runtime: node
     plan: free
     buildCommand: npm install && npm run build -w backend
-    startCommand: npm run deploy -w backend
+    startCommand: npm run start -w backend
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV

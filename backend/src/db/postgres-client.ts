@@ -9,8 +9,9 @@ export function createPostgresClient(connectionString: string, max = 10) {
 
   return postgres(connectionString, {
     max,
-    ssl: useSsl ? "require" : false,
+    ssl: useSsl ? { rejectUnauthorized: false } : false,
     connect_timeout: 30,
+    idle_timeout: 20,
   });
 }
 

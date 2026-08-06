@@ -7,7 +7,7 @@
     "dev": "tsx watch --env-file=../.env src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "deploy": "npm run db:migrate && npm run db:seed && npm run start",
+    "deploy": "node dist/index.js",
     "lint": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node dist/db/migrate.js",
