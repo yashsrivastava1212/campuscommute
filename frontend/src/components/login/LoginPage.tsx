@@ -2,22 +2,13 @@
 
 
 
-import { useEffect, useState } from "react";
-
-import { useRouter } from "next/navigation";
-
+import { useState } from "react";
 import { GuestGuard } from "@/components/auth/AuthGuard";
-
 import { BrandLockup } from "@/components/brand/BrandLockup";
-
 import { BrandLogo } from "@/components/brand/BrandLogo";
-
 import { EmailStep } from "@/components/login/EmailStep";
-
 import { OtpStep } from "@/components/login/OtpStep";
-
 import { useAuth } from "@/context/AuthProvider";
-
 import { API_URL, loginWithOtp } from "@/lib/api";
 
 
@@ -27,10 +18,7 @@ type Step = "email" | "otp";
 
 
 function LoginContent() {
-
-  const router = useRouter();
-
-  const { user, signIn } = useAuth();
+  const { signIn } = useAuth();
 
   const [step, setStep] = useState<Step>("email");
 
@@ -41,20 +29,6 @@ function LoginContent() {
   const [isLoading, setIsLoading] = useState(false);
 
   const [apiError, setApiError] = useState("");
-
-
-
-  useEffect(() => {
-
-    if (user?.id) {
-
-      router.replace(user.profileComplete ? "/carpools" : "/profile/setup");
-
-    }
-
-  }, [user, router]);
-
-
 
   async function sendOtp(targetEmail: string) {
 
@@ -142,10 +116,8 @@ function LoginContent() {
 
       signIn(session);
 
-      router.replace(
-
+      window.location.replace(
         session.user.profileComplete ? "/carpools" : "/profile/setup"
-
       );
 
     } catch (error) {

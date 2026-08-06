@@ -10,7 +10,7 @@ export async function runProductionSetup() {
   const connectionString = process.env.DATABASE_URL?.trim();
   if (!connectionString) {
     throw new Error(
-      "DATABASE_URL is not set. Link your Render Postgres database to this web service."
+      "DATABASE_URL is not set. Add a PostgreSQL database on Railway and link it to this service."
     );
   }
 
@@ -18,18 +18,14 @@ export async function runProductionSetup() {
   const migrationsFolder = resolveMigrationsFolder(fromDir);
 
   console.log("[DB] Preparing production database...");
-  console.log(`[DB] cwd: ${process.cwd()}`);
   console.log(`[DB] migrations: ${migrationsFolder}`);
 
   const client = createPostgresClient(connectionString, 1);
   const db = drizzle(client, { schema });
 
   try {
-    console.log("[DB] Running migrations...");
     await migrate(db, { migrationsFolder });
     console.log("[DB] Migrations complete");
-
-    console.log("[DB] Seeding reference data...");
     await seedDatabase(db);
     console.log("[DB] Seed complete");
   } finally {

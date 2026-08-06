@@ -123,20 +123,23 @@ export function useAuth() {
 
 export function useRequireAuth(options?: { requireProfile?: boolean }) {
   const auth = useAuth();
-  const router = useRouter();
 
   useEffect(() => {
     if (auth.isLoading) return;
 
     if (!auth.user?.id) {
-      router.replace("/login");
+      if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+        window.location.replace("/login");
+      }
       return;
     }
 
     if (options?.requireProfile && !auth.user.profileComplete) {
-      router.replace("/profile/setup");
+      if (typeof window !== "undefined" && window.location.pathname !== "/profile/setup") {
+        window.location.replace("/profile/setup");
+      }
     }
-  }, [auth.isLoading, auth.user, options?.requireProfile, router]);
+  }, [auth.isLoading, auth.user, options?.requireProfile]);
 
   return auth;
 }

@@ -5,7 +5,7 @@ import postgres from "postgres";
 export function createPostgresClient(connectionString: string, max = 10) {
   const useSsl =
     process.env.NODE_ENV === "production" ||
-    /render\.com|sslmode=require/i.test(connectionString);
+    /railway\.app|rlwy\.net|render\.com|sslmode=require/i.test(connectionString);
 
   return postgres(connectionString, {
     max,

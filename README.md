@@ -32,8 +32,6 @@ When `RESEND_API_KEY` is not set, OTP is **not emailed**. Instead:
 
 ## Local database (no Docker required)
 
-See [DEPLOY.md](./DEPLOY.md) for **Vercel + Render** production deployment.
-
 By default in development, the backend uses an **embedded PGLite database** — no PostgreSQL or Docker needed.
 
 To use real PostgreSQL instead (e.g. with `docker compose up -d`):
@@ -50,3 +48,7 @@ DATABASE_URL=postgresql://campuscommute:campuscommute@localhost:5432/campuscommu
    RESEND_API_KEY=re_xxxxxxxx
    ```
 3. For `@gim.ac.in` delivery, verify the `gim.ac.in` domain in Resend (or use Resend's test address for development)
+
+## Production deployment
+
+Deploy the **backend on Railway** and **frontend on Vercel**. See [DEPLOY.md](./DEPLOY.md) for step-by-step instructions.

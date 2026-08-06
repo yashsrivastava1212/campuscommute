@@ -1,82 +1,69 @@
 # Deploying CampusCommute
 
-Frontend on **Vercel** · Backend on **Render**
+Frontend on **Vercel** · Backend on **Railway**
 
-## 1. Backend (Render)
+## 1. Backend (Railway)
 
-### Option A — Blueprint (recommended)
-
-1. Go to [render.com](https://render.com) → **New** → **Blueprint**.
-2. Connect this GitHub repo — Render reads `render.yaml`.
-3. When prompted, set secret environment variables:
-   - `JWT_SECRET` — strong random string
-   - `JWT_REFRESH_SECRET` — strong random string
-   - `ENCRYPTION_KEY` — 32-char hex string
-   - `CORS_ORIGIN` — your Vercel URL, e.g. `https://campuscommute.vercel.app`
-   - `RESEND_API_KEY` — your Resend API key
-   - `EMAIL_FROM` — verified sender, e.g. `CampusCommute <noreply@gim.ac.in>`
-4. Apply the blueprint. Render creates the web service and PostgreSQL database.
-5. Copy the public backend URL (e.g. `https://campuscommute-api.onrender.com`).
-
-### Option B — Manual web service
-
-1. Create a **PostgreSQL** database on Render.
-2. Create a **Web Service** from this repo:
-   - **Build Command:** `npm install && npm run build -w backend`
-   - **Start Command:** `npm run start -w backend`
-   - **Health Check Path:** `/health`
-3. Set environment variables:
+1. Create a project at [railway.app](https://railway.app) and connect this GitHub repo.
+2. Add **PostgreSQL** to the project (New → Database → PostgreSQL).
+3. Create a **service** from the repo. Railway reads `railway.toml` at the repo root.
+4. Link the PostgreSQL `DATABASE_URL` variable to the backend service.
+5. Set these environment variables on the backend service:
 
 | Variable | Value |
 |----------|--------|
 | `NODE_ENV` | `production` |
-| `DATABASE_URL` | *(Internal Database URL from PostgreSQL)* |
+| `DATABASE_URL` | *(from PostgreSQL plugin)* |
 | `JWT_SECRET` | strong random string |
 | `JWT_REFRESH_SECRET` | strong random string |
 | `ENCRYPTION_KEY` | 32-char hex string |
-| `CORS_ORIGIN` | your Vercel URL |
-| `RESEND_API_KEY` | your Resend API key |
-| `EMAIL_FROM` | verified sender |
-| `ALLOW_DEV_OTP` | `false` |
+| `CORS_ORIGIN` | your Vercel URL, e.g. `https://campuscommute.vercel.app` |
 | `ALLOWED_EMAIL_DOMAIN` | `gim.ac.in` |
+| `RESEND_API_KEY` | your Resend API key |
+| `EMAIL_FROM` | `CampusCommute <onboarding@resend.dev>` or verified domain |
+| `ALLOW_DEV_OTP` | `false` |
 
 Do **not** set `USE_PGLITE` in production.
 
-**Important:** Link your Postgres database to the web service so `DATABASE_URL` is set. On Render, use the **Internal Database URL** from the Postgres dashboard.
+6. Deploy and copy the public backend URL (e.g. `https://campuscommute-api.up.railway.app`).
 
-Each deploy runs migrations and seeds locations automatically when the server starts in production.
-
-Health check: `GET /health`
+On each deploy, the server runs migrations and seeds Goa locations automatically before accepting traffic.
 
 ## 2. Frontend (Vercel)
 
 1. Import the repo at [vercel.com](https://vercel.com).
 2. Set **Root Directory** to `frontend`.
-3. Framework preset: **Next.js** (auto-detected).
-4. Add environment variable:
+3. Add environment variable:
 
 | Variable | Value |
 |----------|--------|
-| `NEXT_PUBLIC_API_URL` | your Render backend URL |
+| `NEXT_PUBLIC_API_URL` | your Railway backend URL (no trailing slash) |
 
-5. Deploy.
+4. Deploy. Vercel uses `frontend/vercel.json` to install dependencies from the monorepo root.
 
-The `frontend/vercel.json` install command installs dependencies from the monorepo root.
+## 3. Connect them
 
-## 3. Connect frontend ↔ backend
+After the first Vercel deploy, update Railway `CORS_ORIGIN` to match your exact Vercel URL (include `https://`). For preview deployments, use a comma-separated list:
 
-After both are live:
+```env
+CORS_ORIGIN=https://campuscommute.vercel.app,https://campuscommute-git-main-yourteam.vercel.app
+```
 
-1. Set Render `CORS_ORIGIN` to your exact Vercel URL (comma-separate multiple URLs for preview deploys).
-2. Redeploy the backend if you change CORS.
-3. Confirm login at your Vercel URL.
+Redeploy the backend after changing `CORS_ORIGIN`.
+
+## 4. Admin user
+
+Connect to Railway PostgreSQL and run:
+
+```sql
+UPDATE users SET is_admin = true WHERE campus_email = 'your.name@gim.ac.in';
+```
+
+## 5. Health checks
+
+- `GET /health` — liveness (used by Railway)
+- `GET /health/ready` — includes database connectivity
 
 ## Local development
 
-```bash
-npm install
-cp .env.example .env
-npm run dev
-```
-
-Frontend: http://localhost:3000 · Backend: http://localhost:3001
+Copy `.env.example` to `.env` and run `npm run dev` from the repo root. Local dev uses embedded PGLite by default — no PostgreSQL required.
