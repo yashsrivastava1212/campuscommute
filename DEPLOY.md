@@ -1,32 +1,48 @@
 # Deploying CampusCommute
 
-Frontend on **Vercel** · Backend on **Railway**
+Frontend on **Vercel** · Backend on **Render**
 
-## 1. Backend (Railway)
+## 1. Backend (Render)
 
-1. Create a project at [railway.app](https://railway.app) and connect this GitHub repo.
-2. Add a **PostgreSQL** database to the project.
-3. Create a **service** from the repo (uses `railway.toml` at the repo root).
-4. Link the PostgreSQL `DATABASE_URL` variable to the backend service.
-5. Set these environment variables on the backend service:
+### Option A — Blueprint (recommended)
+
+1. Go to [render.com](https://render.com) → **New** → **Blueprint**.
+2. Connect this GitHub repo — Render reads `render.yaml`.
+3. When prompted, set secret environment variables:
+   - `JWT_SECRET` — strong random string
+   - `JWT_REFRESH_SECRET` — strong random string
+   - `ENCRYPTION_KEY` — 32-char hex string
+   - `CORS_ORIGIN` — your Vercel URL, e.g. `https://campuscommute.vercel.app`
+   - `RESEND_API_KEY` — your Resend API key
+   - `EMAIL_FROM` — verified sender, e.g. `CampusCommute <noreply@gim.ac.in>`
+4. Apply the blueprint. Render creates the web service and PostgreSQL database.
+5. Copy the public backend URL (e.g. `https://campuscommute-api.onrender.com`).
+
+### Option B — Manual web service
+
+1. Create a **PostgreSQL** database on Render.
+2. Create a **Web Service** from this repo:
+   - **Build Command:** `npm install && npm run build -w backend`
+   - **Start Command:** `npm run deploy -w backend`
+   - **Health Check Path:** `/health`
+3. Set environment variables:
 
 | Variable | Value |
 |----------|--------|
 | `NODE_ENV` | `production` |
-| `DATABASE_URL` | *(from PostgreSQL plugin)* |
+| `DATABASE_URL` | *(Internal Database URL from PostgreSQL)* |
 | `JWT_SECRET` | strong random string |
 | `JWT_REFRESH_SECRET` | strong random string |
 | `ENCRYPTION_KEY` | 32-char hex string |
-| `CORS_ORIGIN` | your Vercel URL, e.g. `https://campuscommute.vercel.app` |
+| `CORS_ORIGIN` | your Vercel URL |
 | `RESEND_API_KEY` | your Resend API key |
-| `EMAIL_FROM` | verified sender, e.g. `CampusCommute <noreply@gim.ac.in>` |
+| `EMAIL_FROM` | verified sender |
 | `ALLOW_DEV_OTP` | `false` |
 | `ALLOWED_EMAIL_DOMAIN` | `gim.ac.in` |
 
 Do **not** set `USE_PGLITE` in production.
 
-6. Deploy. Railway runs migrations and seeds locations on each deploy (`npm run deploy -w backend`).
-7. Copy the public backend URL (e.g. `https://campuscommute-production.up.railway.app`).
+Each deploy runs migrations and seeds locations (`npm run deploy -w backend`).
 
 Health check: `GET /health`
 
@@ -39,7 +55,7 @@ Health check: `GET /health`
 
 | Variable | Value |
 |----------|--------|
-| `NEXT_PUBLIC_API_URL` | your Railway backend URL |
+| `NEXT_PUBLIC_API_URL` | your Render backend URL |
 
 5. Deploy.
 
@@ -49,7 +65,7 @@ The `frontend/vercel.json` install command installs dependencies from the monore
 
 After both are live:
 
-1. Set Railway `CORS_ORIGIN` to your exact Vercel URL (comma-separate multiple URLs for preview deploys).
+1. Set Render `CORS_ORIGIN` to your exact Vercel URL (comma-separate multiple URLs for preview deploys).
 2. Redeploy the backend if you change CORS.
 3. Confirm login at your Vercel URL.
 
