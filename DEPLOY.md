@@ -23,7 +23,7 @@ Frontend on **Vercel** · Backend on **Render**
 1. Create a **PostgreSQL** database on Render.
 2. Create a **Web Service** from this repo:
    - **Build Command:** `npm install && npm run build -w backend`
-   - **Start Command:** `npm run deploy -w backend`
+   - **Start Command:** `npm run start -w backend`
    - **Health Check Path:** `/health`
 3. Set environment variables:
 
