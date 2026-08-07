@@ -1,3 +1,4 @@
+import dns from "node:dns/promises";
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
 import "../env.js";
@@ -138,11 +139,16 @@ async function sendViaSmtp(
   const pass = stripQuotes(process.env.SMTP_PASS!.trim());
   const from = getFromEmail();
 
+  const [smtpHost] = await dns.resolve4(host);
+
   const transport = nodemailer.createTransport({
-    host,
+    host: smtpHost,
     port,
     secure: port === 465,
     auth: { user, pass },
+    tls: {
+      servername: host,
+    },
   });
 
   await transport.sendMail({ from, to, subject, html, text });
