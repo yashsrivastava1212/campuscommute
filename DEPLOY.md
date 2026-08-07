@@ -34,7 +34,9 @@ Both web services deploy from the same GitHub repo.
 | `ENCRYPTION_KEY` | 32-char hex string |
 | `CORS_ORIGIN` | your Railway **frontend** URL |
 | `ALLOWED_EMAIL_DOMAIN` | `gim.ac.in` |
-| `ALLOW_DEV_OTP` | `false` for real email delivery |
+| `SUPABASE_URL` | `https://YOUR-PROJECT.supabase.co` |
+| `SUPABASE_JWT_SECRET` | Supabase → Project Settings → JWT (not the Secret API key) |
+| `ALLOW_DEV_OTP` | `false` (legacy backend OTP only; Supabase sends login emails) |
 
 Do **not** set `USE_PGLITE` in production.
 
@@ -90,8 +92,10 @@ Put email variables on the **backend** service only, not the frontend.
 | Variable | Value |
 |----------|--------|
 | `NEXT_PUBLIC_API_URL` | your Railway **backend** URL (no trailing slash) |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://YOUR-PROJECT.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase **Publishable** key (Settings → API) |
 
-Do **not** add backend variables (`DATABASE_URL`, `JWT_SECRET`, etc.) to the frontend service.
+Do **not** add backend variables (`DATABASE_URL`, `JWT_SECRET`, `SUPABASE_JWT_SECRET`, etc.) to the frontend service.
 
 4. **Settings → Networking → Generate Domain** and copy the frontend URL.
 5. Update backend **`CORS_ORIGIN`** to this frontend URL and redeploy the backend.
@@ -100,21 +104,47 @@ Do **not** add backend variables (`DATABASE_URL`, `JWT_SECRET`, etc.) to the fro
 
 ---
 
-## 3. Connect them
+## 3. Supabase Auth (OTP login)
+
+Login uses **Supabase Auth** for passwordless OTP. The Railway backend verifies Supabase access tokens and maps users to your existing `users` table.
+
+### Supabase dashboard
+
+1. **Authentication → Providers → Email** — enable Email.
+2. **Authentication → Emails → SMTP** — add Gmail SMTP (see Gmail section above).
+3. **Authentication → Email Templates → Magic Link** — use `{{ .Token }}` only (6-digit OTP, no magic link URL).
+4. **Authentication → URL Configuration** — Site URL = your Railway frontend URL; add `http://localhost:3000/**` for local dev.
+
+### Railway variables (already set if you completed setup)
+
+| Service | Variable |
+|---------|----------|
+| Frontend | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL` |
+| Backend | `SUPABASE_URL`, `SUPABASE_JWT_SECRET`, `CORS_ORIGIN`, `ALLOWED_EMAIL_DOMAIN=gim.ac.in` |
+
+Only `@gim.ac.in` addresses can sign in (enforced in Supabase flow + backend).
+
+---
+
+## 4. Connect them
 
 ```env
 # Frontend service
 NEXT_PUBLIC_API_URL=https://your-backend.up.railway.app
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-publishable-key
 
 # Backend service
 CORS_ORIGIN=https://your-frontend.up.railway.app
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_JWT_SECRET=your-jwt-secret
 ```
 
-Redeploy both services after changing either URL.
+Redeploy **both** services after changing URLs or Supabase keys (`NEXT_PUBLIC_*` vars are baked in at build time).
 
 ---
 
-## 4. Admin user
+## 5. Admin user
 
 Connect to Railway PostgreSQL and run:
 
@@ -124,7 +154,7 @@ UPDATE users SET is_admin = true WHERE campus_email = 'your.name@gim.ac.in';
 
 ---
 
-## 5. Health checks
+## 6. Health checks
 
 | Service | Path |
 |---------|------|

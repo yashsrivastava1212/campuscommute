@@ -3,6 +3,11 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { users } from "../db/schema.js";
 import { verifyAccessToken, type AccessTokenPayload } from "../lib/jwt.js";
+import {
+  isSupabaseAuthConfigured,
+  verifySupabaseAccessToken,
+} from "../lib/supabase-auth.js";
+import { findOrCreateUser } from "../services/auth.service.js";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -23,6 +28,21 @@ export async function authenticate(
   const token = header.slice(7);
 
   try {
+    if (isSupabaseAuthConfigured()) {
+      const payload = verifySupabaseAccessToken(token);
+      const { user } = await findOrCreateUser(payload.email!);
+
+      if (user.isBanned) {
+        return reply.status(403).send({ message: "Account suspended" });
+      }
+
+      request.user = {
+        sub: user.id,
+        email: user.campusEmail,
+      };
+      return;
+    }
+
     request.user = verifyAccessToken(token);
 
     const [user] = await db
