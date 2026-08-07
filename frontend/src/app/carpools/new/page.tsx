@@ -14,6 +14,7 @@ import { AppShell } from "@/components/MainNav";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useAuth } from "@/context/AuthProvider";
 import { apiFetch } from "@/lib/api";
+import { isSameCalendarDay } from "@/lib/format";
 
 export default function CreateCarpoolPage() {
   return (
@@ -79,6 +80,24 @@ function CreateContent() {
     if (origin.id === destination.id) {
       setError("Starting point and ending point must be different.");
       return;
+    }
+
+    const proposedDeparture = new Date(departureAt);
+    try {
+      const { carpools: myTrips } = await apiFetch<{
+        carpools: Array<{ departureAt: string; status: string }>;
+      }>("/api/v1/users/me/carpools");
+      const sameDayTrip = myTrips.some(
+        (trip) =>
+          (trip.status === "OPEN" || trip.status === "LOCKED") &&
+          isSameCalendarDay(trip.departureAt, proposedDeparture)
+      );
+      if (sameDayTrip) {
+        setError("You already have a trip on this date. You can only create one trip per day.");
+        return;
+      }
+    } catch {
+      // Backend validates if this pre-check fails.
     }
 
     setIsLoading(true);

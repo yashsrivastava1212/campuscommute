@@ -10,23 +10,31 @@ import {
 } from "../db/schema.js";
 import { createNotification } from "./notification.service.js";
 
-export const DEPARTURE_CONFLICT_MINUTES = 15;
+const APP_TIMEZONE = "Asia/Kolkata";
 
-export function hasDepartureTimeConflict(
-  proposed: Date,
-  existing: Date,
-  bufferMinutes = DEPARTURE_CONFLICT_MINUTES
-): boolean {
-  const diffMs = Math.abs(proposed.getTime() - existing.getTime());
-  return diffMs <= bufferMinutes * 60 * 1000;
+export function getCalendarDateKey(
+  date: Date,
+  timeZone = APP_TIMEZONE
+): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
 }
 
-export async function findConflictingUserDeparture(
+export function isSameCalendarDay(a: Date, b: Date, timeZone = APP_TIMEZONE): boolean {
+  return getCalendarDateKey(a, timeZone) === getCalendarDateKey(b, timeZone);
+}
+
+export async function findUserTripOnSameDay(
   userId: string,
-  departureAt: Date
+  departureAt: Date,
+  excludeCarpoolId?: string
 ): Promise<Date | null> {
   const rows = await db
-    .select({ departureAt: carpools.departureAt })
+    .select({ id: carpools.id, departureAt: carpools.departureAt })
     .from(carpoolMemberships)
     .innerJoin(carpools, eq(carpoolMemberships.carpoolId, carpools.id))
     .where(
@@ -36,8 +44,11 @@ export async function findConflictingUserDeparture(
       )
     );
 
+  const proposedDay = getCalendarDateKey(departureAt);
+
   for (const row of rows) {
-    if (hasDepartureTimeConflict(departureAt, row.departureAt)) {
+    if (excludeCarpoolId && row.id === excludeCarpoolId) continue;
+    if (getCalendarDateKey(row.departureAt) === proposedDay) {
       return row.departureAt;
     }
   }

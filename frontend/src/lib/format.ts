@@ -1,3 +1,17 @@
+export function getCalendarDateKey(iso: string | Date, timeZone = "Asia/Kolkata") {
+  const date = typeof iso === "string" ? new Date(iso) : iso;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
+
+export function isSameCalendarDay(a: string | Date, b: string | Date) {
+  return getCalendarDateKey(a) === getCalendarDateKey(b);
+}
+
 export function shortLocation(name: string) {
   const part = name.split("—")[0]?.trim();
   return part && part.length > 0 ? part : name;

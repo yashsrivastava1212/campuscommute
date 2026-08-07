@@ -9,7 +9,7 @@ import {
   users,
 } from "../db/schema.js";
 import { authenticate } from "../middleware/auth.js";
-import { findConflictingUserDeparture } from "../services/carpool.service.js";
+import { findUserTripOnSameDay } from "../services/carpool.service.js";
 
 const JOIN_CUTOFF_MINUTES = 30;
 
@@ -85,14 +85,11 @@ export async function carpoolRoutes(app: FastifyInstance) {
         .where(eq(users.id, userId))
         .limit(1);
 
-      const conflictingDeparture = await findConflictingUserDeparture(
-        userId,
-        departureAt
-      );
-      if (conflictingDeparture) {
+      const sameDayTrip = await findUserTripOnSameDay(userId, departureAt);
+      if (sameDayTrip) {
         return reply.status(409).send({
           message:
-            "Departure time is too close to one of your existing trips (within 15 minutes). Choose a different time.",
+            "You already have a trip on this date. You can only create or join one trip per day.",
         });
       }
 
@@ -329,6 +326,17 @@ export async function carpoolRoutes(app: FastifyInstance) {
 
       if (parsed.data.departureAt) {
         const departureAt = new Date(parsed.data.departureAt);
+        const sameDayTrip = await findUserTripOnSameDay(
+          request.user!.sub,
+          departureAt,
+          id
+        );
+        if (sameDayTrip) {
+          return reply.status(409).send({
+            message:
+              "You already have another trip on this date. You can only have one trip per day.",
+          });
+        }
         updates.departureAt = departureAt;
         updates.joinCutoffAt = computeJoinCutoff(departureAt);
       }

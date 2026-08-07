@@ -9,6 +9,7 @@ import { DiscussionPanel } from "@/components/DiscussionPanel";
 import { TripInfoGrid } from "@/components/TripInfoGrid";
 import { useAuth } from "@/context/AuthProvider";
 import { apiFetch } from "@/lib/api";
+import { isSameCalendarDay } from "@/lib/format";
 
 type Member = {
   id: string;
@@ -69,6 +70,7 @@ function DetailContent() {
   const [carpool, setCarpool] = useState<CarpoolDetail | null>(null);
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
   const [myRequest, setMyRequest] = useState<string | null>(null);
+  const [hasTripSameDay, setHasTripSameDay] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -101,6 +103,27 @@ function DetailContent() {
   useEffect(() => {
     reload();
   }, [params.id, user?.id]);
+
+  useEffect(() => {
+    if (!user || !carpool) {
+      setHasTripSameDay(false);
+      return;
+    }
+
+    apiFetch<{
+      carpools: Array<{ id: string; departureAt: string; status: string }>;
+    }>("/api/v1/users/me/carpools")
+      .then((data) => {
+        const conflict = data.carpools.some(
+          (trip) =>
+            trip.id !== carpool.id &&
+            (trip.status === "OPEN" || trip.status === "LOCKED") &&
+            isSameCalendarDay(trip.departureAt, carpool.departureAt)
+        );
+        setHasTripSameDay(conflict);
+      })
+      .catch(() => setHasTripSameDay(false));
+  }, [user, carpool]);
 
   useEffect(() => {
     if (carpool && user && (isOwner || isMember)) {
@@ -145,7 +168,7 @@ function DetailContent() {
     !carpool.isLocked &&
     carpool.seatsAvailable > 0 &&
     !cutoffPassed &&
-    !user?.activeCarpoolId &&
+    !hasTripSameDay &&
     myRequest !== "PENDING";
 
   return (
@@ -229,6 +252,11 @@ function DetailContent() {
                 <Link href="/my-trip" className="btn-primary">
                   Go to My Trips
                 </Link>
+              )}
+              {hasTripSameDay && !isMember && (
+                <p className="text-body-md text-on-variant">
+                  You already have a trip on this date. You can only join one trip per day.
+                </p>
               )}
               {cutoffPassed && !isMember && (
                 <p className="text-body-md text-on-variant">

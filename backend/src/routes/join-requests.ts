@@ -10,6 +10,7 @@ import {
 } from "../db/schema.js";
 import { authenticate } from "../middleware/auth.js";
 import {
+  findUserTripOnSameDay,
   getMembership,
   postSystemMessage,
   transferOwnership,
@@ -40,9 +41,12 @@ export async function joinRequestRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: "No seats available" });
       }
 
-      const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-      if (user?.activeCarpoolId) {
-        return reply.status(409).send({ message: "You already belong to an active carpool" });
+      const sameDayTrip = await findUserTripOnSameDay(userId, carpool.departureAt);
+      if (sameDayTrip) {
+        return reply.status(409).send({
+          message:
+            "You already have a trip on this date. You can only create or join one trip per day.",
+        });
       }
 
       const existingMember = await getMembership(id, userId);
@@ -149,6 +153,17 @@ export async function joinRequestRoutes(app: FastifyInstance) {
 
       if (carpool.seatsAvailable <= 0) {
         return reply.status(400).send({ message: "No seats available" });
+      }
+
+      const sameDayTrip = await findUserTripOnSameDay(
+        jr.requesterId,
+        carpool.departureAt
+      );
+      if (sameDayTrip) {
+        return reply.status(409).send({
+          message:
+            "This student already has a trip on this date and cannot join another.",
+        });
       }
 
       await db.insert(carpoolMemberships).values({
