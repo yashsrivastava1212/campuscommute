@@ -10,49 +10,44 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch, logout as apiLogout } from "@/lib/api";
-import type { AuthUser } from "@/lib/session";
-import { assertSupabase } from "@/lib/supabase";
+import {
+  clearSession,
+  getSession,
+  type AuthSession,
+  type AuthUser,
+} from "@/lib/session";
 
 type AuthContextValue = {
   user: AuthUser | null;
   isLoading: boolean;
-  refreshUser: () => Promise<AuthUser | null>;
+  signIn: (session: AuthSession) => void;
+  refreshUser: () => Promise<void>;
   logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
-function mapProfileToUser(profile: {
-  id: string;
-  email: string;
-  displayName: string | null;
-  profileComplete: boolean;
-  activeCarpoolId?: string | null;
-  isAdmin?: boolean;
-}): AuthUser {
-  return {
-    id: profile.id,
-    email: profile.email,
-    displayName: profile.displayName,
-    isNewUser: false,
-    profileComplete: profile.profileComplete,
-    activeCarpoolId: profile.activeCarpoolId,
-    isAdmin: profile.isAdmin,
-  };
-}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const refreshUser = useCallback(async () => {
-    const supabase = assertSupabase();
-    const { data, error } = await supabase.auth.getSession();
-
-    if (error || !data.session) {
+  const signIn = useCallback((session: AuthSession) => {
+    if (!session.user?.id) {
+      clearSession();
       setUser(null);
-      return null;
+      setIsLoading(false);
+      return;
+    }
+    setUser(session.user);
+    setIsLoading(false);
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    const session = getSession();
+    if (!session?.user?.id) {
+      setUser(null);
+      return;
     }
 
     try {
@@ -66,37 +61,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }>("/api/v1/users/me");
 
       if (!profile?.id) {
+        clearSession();
         setUser(null);
-        return null;
+        return;
       }
 
-      const nextUser = mapProfileToUser(profile);
-      setUser(nextUser);
-      return nextUser;
+      setUser({
+        id: profile.id,
+        email: profile.email,
+        displayName: profile.displayName,
+        isNewUser: false,
+        profileComplete: profile.profileComplete,
+        activeCarpoolId: profile.activeCarpoolId,
+        isAdmin: profile.isAdmin,
+      });
     } catch {
+      clearSession();
       setUser(null);
-      return null;
     }
   }, []);
 
   useEffect(() => {
-    const supabase = assertSupabase();
-
-    void refreshUser().finally(() => setIsLoading(false));
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        setUser(null);
-        setIsLoading(false);
-        return;
-      }
-
-      void refreshUser().finally(() => setIsLoading(false));
-    });
-
-    return () => subscription.unsubscribe();
+    const session = getSession();
+    if (session?.user?.id) {
+      setUser(session.user);
+      refreshUser().finally(() => setIsLoading(false));
+    } else {
+      if (session) clearSession();
+      setUser(null);
+      setIsLoading(false);
+    }
   }, [refreshUser]);
 
   const logout = useCallback(async () => {
@@ -106,8 +100,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [router]);
 
   const value = useMemo(
-    () => ({ user, isLoading, refreshUser, logout }),
-    [user, isLoading, refreshUser, logout]
+    () => ({ user, isLoading, signIn, refreshUser, logout }),
+    [user, isLoading, signIn, refreshUser, logout]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -142,4 +136,8 @@ export function useRequireAuth(options?: { requireProfile?: boolean }) {
   }, [auth.isLoading, auth.user, options?.requireProfile]);
 
   return auth;
+}
+
+export function clearAuthSession() {
+  clearSession();
 }

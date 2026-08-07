@@ -1,4 +1,10 @@
-import { getSupabaseAccessToken } from "./supabase";
+import {
+  buildSessionFromAuthResponse,
+  clearSession,
+  getSession,
+  setSession,
+  type AuthSession,
+} from "./session";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
@@ -23,11 +29,38 @@ export async function readApiError(response: Response, fallback: string): Promis
   return `${fallback} (HTTP ${response.status})`;
 }
 
+async function refreshSession(session: AuthSession): Promise<AuthSession | null> {
+  const response = await fetch(`${API_URL}/api/v1/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: session.refreshToken }),
+  });
+
+  if (!response.ok) {
+    clearSession();
+    return null;
+  }
+
+  const data = await response.json();
+  const updated: AuthSession = {
+    ...session,
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    expiresAt: Date.now() + data.expires_in * 1000,
+  };
+  setSession(updated);
+  return updated;
+}
+
 export async function apiFetch<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const accessToken = await getSupabaseAccessToken();
+  let session = getSession();
+
+  if (session && Date.now() >= session.expiresAt - 30_000) {
+    session = await refreshSession(session);
+  }
 
   const hasBody =
     options.body !== undefined && options.body !== null && options.body !== "";
@@ -40,8 +73,8 @@ export async function apiFetch<T>(
     headers["Content-Type"] = "application/json";
   }
 
-  if (accessToken) {
-    headers.Authorization = `Bearer ${accessToken}`;
+  if (session?.accessToken) {
+    headers.Authorization = `Bearer ${session.accessToken}`;
   }
 
   const response = await fetch(`${API_URL}${path}`, {
@@ -50,6 +83,7 @@ export async function apiFetch<T>(
   });
 
   if (response.status === 401) {
+    clearSession();
     if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
       window.location.href = "/login";
     }
@@ -65,64 +99,33 @@ export async function apiFetch<T>(
   return data as T;
 }
 
-export async function sendBackendOtp(email: string): Promise<{
-  devOtp?: string;
-}> {
-  const response = await fetch(`${API_URL}/api/v1/auth/send-otp`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email }),
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      await readApiError(response, "Failed to send verification code.")
-    );
-  }
-
-  const data = (await response.json()) as {
-    email_sent?: boolean;
-    dev_otp?: string;
-  };
-
-  return {
-    devOtp:
-      data.email_sent === false && typeof data.dev_otp === "string"
-        ? data.dev_otp
-        : undefined,
-  };
-}
-
-export async function verifyBackendOtp(
-  email: string,
-  otp: string
-): Promise<{ supabaseTokenHash?: string }> {
+export async function loginWithOtp(email: string, otp: string) {
   const response = await fetch(`${API_URL}/api/v1/auth/verify-otp`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, otp }),
   });
 
-  const data = (await response.json()) as {
-    message?: string;
-    supabase_token_hash?: string;
-  };
-
+  const data = await response.json();
   if (!response.ok) {
     throw new Error(data.message ?? "Verification failed");
   }
 
-  return {
-    supabaseTokenHash:
-      typeof data.supabase_token_hash === "string"
-        ? data.supabase_token_hash
-        : undefined,
-  };
+  const session = buildSessionFromAuthResponse(data);
+  setSession(session);
+  return session;
 }
 
 export async function logout() {
-  const { assertSupabase } = await import("./supabase");
-  await assertSupabase().auth.signOut();
+  const session = getSession();
+  if (session) {
+    await fetch(`${API_URL}/api/v1/auth/logout`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: session.refreshToken }),
+    }).catch(() => undefined);
+  }
+  clearSession();
 }
 
 export { API_URL };

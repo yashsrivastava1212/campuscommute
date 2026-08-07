@@ -7,22 +7,12 @@ import { BrandLogo } from "@/components/brand/BrandLogo";
 import { EmailStep } from "@/components/login/EmailStep";
 import { OtpStep } from "@/components/login/OtpStep";
 import { useAuth } from "@/context/AuthProvider";
-import { sendBackendOtp, verifyBackendOtp } from "@/lib/api";
-import { assertSupabase } from "@/lib/supabase";
+import { API_URL, loginWithOtp, readApiError } from "@/lib/api";
 
 type Step = "email" | "otp";
 
-function normalizeGimEmail(email: string) {
-  return email.trim().toLowerCase();
-}
-
-function isValidGimEmail(email: string) {
-  const normalized = normalizeGimEmail(email);
-  return /^[^\s@]+@gim\.ac\.in$/.test(normalized);
-}
-
 function LoginContent() {
-  const { refreshUser } = useAuth();
+  const { signIn } = useAuth();
 
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
@@ -34,24 +24,32 @@ function LoginContent() {
     setIsLoading(true);
     setApiError("");
 
-    const normalizedEmail = normalizeGimEmail(targetEmail);
-
-    if (!isValidGimEmail(normalizedEmail)) {
-      setApiError("Only @gim.ac.in email addresses can sign in.");
-      setIsLoading(false);
-      return;
-    }
-
     try {
-      const result = await sendBackendOtp(normalizedEmail);
+      const response = await fetch(`${API_URL}/api/v1/auth/send-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: targetEmail }),
+      });
 
-      setEmail(normalizedEmail);
-      setDevOtp(result.devOtp);
+      if (!response.ok) {
+        throw new Error(
+          await readApiError(response, "Failed to send verification code.")
+        );
+      }
+
+      const data = await response.json();
+
+      setEmail(targetEmail);
+      setDevOtp(
+        data.email_sent === false && typeof data.dev_otp === "string"
+          ? data.dev_otp
+          : undefined
+      );
       setStep("otp");
     } catch (error) {
       const message =
         error instanceof TypeError && error.message === "Failed to fetch"
-          ? "Cannot reach the API. Check NEXT_PUBLIC_API_URL on the frontend service and CORS_ORIGIN on the backend."
+          ? "Cannot reach the API. Check NEXT_PUBLIC_API_URL on the frontend and CORS_ORIGIN on the backend."
           : error instanceof Error
             ? error.message
             : "Something went wrong. Try again.";
@@ -67,31 +65,10 @@ function LoginContent() {
     setApiError("");
 
     try {
-      const { supabaseTokenHash } = await verifyBackendOtp(email, otp);
-
-      if (!supabaseTokenHash) {
-        throw new Error(
-          "Login succeeded but session setup failed. Add SUPABASE_SERVICE_ROLE_KEY to the backend on Railway and redeploy."
-        );
-      }
-
-      const supabase = assertSupabase();
-      const { error } = await supabase.auth.verifyOtp({
-        token_hash: supabaseTokenHash,
-        type: "email",
-      });
-
-      if (error) {
-        throw new Error(error.message);
-      }
-
-      const profile = await refreshUser();
-      if (!profile) {
-        throw new Error("Signed in, but could not load your profile. Try again.");
-      }
-
+      const session = await loginWithOtp(email, otp);
+      signIn(session);
       window.location.replace(
-        profile.profileComplete ? "/carpools" : "/profile/setup"
+        session.user.profileComplete ? "/carpools" : "/profile/setup"
       );
     } catch (error) {
       setApiError(
