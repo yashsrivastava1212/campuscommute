@@ -123,12 +123,10 @@ export async function carpoolRoutes(app: FastifyInstance) {
         carpoolId: carpool.id,
       });
 
-      if (!user?.activeCarpoolId) {
-        await db
-          .update(users)
-          .set({ activeCarpoolId: carpool.id, updatedAt: new Date() })
-          .where(eq(users.id, userId));
-      }
+      await db
+        .update(users)
+        .set({ activeCarpoolId: carpool.id, updatedAt: new Date() })
+        .where(eq(users.id, userId));
 
       return reply.status(201).send(carpool);
     }

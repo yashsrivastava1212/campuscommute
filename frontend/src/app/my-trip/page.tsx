@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import { AppShell } from "@/components/MainNav";
 import { DiscussionPanel } from "@/components/DiscussionPanel";
@@ -67,8 +67,7 @@ export default function MyTripPage() {
 
 function MyTripContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
-  const tripFromUrl = useRef(searchParams.get("trip"));
+  const urlTripId = searchParams.get("trip");
   const { user, refreshUser } = useAuth();
   const [trips, setTrips] = useState<CarpoolDetail[]>([]);
   const [createdTrips, setCreatedTrips] = useState<CarpoolDetail[]>([]);
@@ -178,7 +177,6 @@ function MyTripContent() {
     setSelectedTripId(tripId);
     syncTripForm(trip);
     loadJoinRequests(trip).catch(() => undefined);
-    router.replace(`/my-trip?trip=${tripId}`, { scroll: false });
   }
 
   useEffect(() => {
@@ -189,8 +187,41 @@ function MyTripContent() {
 
   useEffect(() => {
     if (!user?.id) return;
-    loadTrips(tripFromUrl.current);
-  }, [user?.id, loadTrips]);
+
+    let cancelled = false;
+
+    (async () => {
+      if (urlTripId) {
+        await refreshUser().catch(() => undefined);
+      }
+      if (!cancelled) {
+        loadTrips(urlTripId);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, urlTripId, loadTrips, refreshUser]);
+
+  useEffect(() => {
+    if (loading || trips.length === 0) return;
+    if (selectedTripId && trips.some((trip) => trip.id === selectedTripId)) return;
+
+    const fallbackId =
+      urlTripId && trips.some((trip) => trip.id === urlTripId)
+        ? urlTripId
+        : trips[0]?.id ?? null;
+
+    if (!fallbackId) return;
+
+    const fallbackTrip = trips.find((trip) => trip.id === fallbackId);
+    if (!fallbackTrip) return;
+
+    setSelectedTripId(fallbackId);
+    syncTripForm(fallbackTrip);
+    loadJoinRequests(fallbackTrip).catch(() => undefined);
+  }, [loading, trips, selectedTripId, urlTripId, user?.id]);
 
   async function handleJoinAction(id: string, action: "accept" | "reject") {
     setActionLoading(true);
@@ -345,7 +376,7 @@ function MyTripContent() {
   if (!carpool) {
     return (
       <AppShell>
-        <p className="py-12 text-center text-body-md text-on-variant">Loading your bookings…</p>
+        <p className="py-12 text-center text-body-md text-on-variant">Loading booking details…</p>
       </AppShell>
     );
   }

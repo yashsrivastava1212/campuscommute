@@ -101,7 +101,6 @@ function CreateContent() {
     }
 
     setIsLoading(true);
-    const hadActiveTrip = Boolean(user?.activeCarpoolId);
     try {
       const created = await apiFetch<{ id: string }>("/api/v1/carpools", {
         method: "POST",
@@ -116,7 +115,7 @@ function CreateContent() {
         }),
       });
       await refreshUser();
-      router.push(hadActiveTrip ? `/my-trip?trip=${created.id}` : "/my-trip");
+      router.push(`/my-trip?trip=${created.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create carpool");
     } finally {
