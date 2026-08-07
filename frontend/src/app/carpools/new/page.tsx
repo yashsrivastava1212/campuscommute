@@ -25,7 +25,7 @@ export default function CreateCarpoolPage() {
 
 function CreateContent() {
   const router = useRouter();
-  const { refreshUser } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [locations, setLocations] = useState<Location[]>([]);
   const [originId, setOriginId] = useState("");
   const [destinationId, setDestinationId] = useState("");
@@ -82,8 +82,9 @@ function CreateContent() {
     }
 
     setIsLoading(true);
+    const hadActiveTrip = Boolean(user?.activeCarpoolId);
     try {
-      await apiFetch<{ id: string }>("/api/v1/carpools", {
+      const created = await apiFetch<{ id: string }>("/api/v1/carpools", {
         method: "POST",
         body: JSON.stringify({
           origin: origin.name,
@@ -96,7 +97,7 @@ function CreateContent() {
         }),
       });
       await refreshUser();
-      router.push("/my-trip");
+      router.push(hadActiveTrip ? `/carpools/${created.id}` : "/my-trip");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create carpool");
     } finally {

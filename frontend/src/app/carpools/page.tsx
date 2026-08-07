@@ -9,7 +9,6 @@ import { RideCard } from "@/components/mobility/RideCard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { groupLocations, type Location } from "@/components/LocationSelect";
-import { useAuth } from "@/context/AuthProvider";
 import { apiFetch } from "@/lib/api";
 
 type Carpool = {
@@ -30,8 +29,6 @@ export default function BrowseCarpoolsPage() {
 }
 
 function BrowseContent() {
-  const { user } = useAuth();
-  const hasActiveTrip = Boolean(user?.activeCarpoolId);
   const [carpools, setCarpools] = useState<Carpool[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [destination, setDestination] = useState("");
@@ -65,12 +62,10 @@ function BrowseContent() {
         title="Browse rides"
         subtitle="Find GIM students heading your way."
         action={
-          !hasActiveTrip ? (
-            <Link href="/carpools/new" className="btn-primary--inline inline-flex items-center gap-2">
-              <Plus className="h-4 w-4" aria-hidden />
-              Create ride
-            </Link>
-          ) : undefined
+          <Link href="/carpools/new" className="btn-primary--inline inline-flex items-center gap-2">
+            <Plus className="h-4 w-4" aria-hidden />
+            Create ride
+          </Link>
         }
       />
 
@@ -150,15 +145,9 @@ function BrowseContent() {
             title="No rides found"
             description="Try changing your filters or create a ride for your journey."
             action={
-              !hasActiveTrip ? (
-                <Link href="/carpools/new" className="btn-primary--inline">
-                  Create a ride
-                </Link>
-              ) : (
-                <Link href="/my-trip" className="btn-primary--inline">
-                  Go to My Trips
-                </Link>
-              )
+              <Link href="/carpools/new" className="btn-primary--inline">
+                Create a ride
+              </Link>
             }
           />
         )

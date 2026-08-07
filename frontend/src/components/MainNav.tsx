@@ -111,7 +111,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       label: "Create Ride",
       icon: PlusCircle,
       match: (p) => p === "/carpools/new",
-      show: !hasActiveTrip,
     },
     {
       href: "/cab-services",

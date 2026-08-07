@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
   carpoolMemberships,
@@ -9,6 +9,41 @@ import {
   users,
 } from "../db/schema.js";
 import { createNotification } from "./notification.service.js";
+
+export const DEPARTURE_CONFLICT_MINUTES = 15;
+
+export function hasDepartureTimeConflict(
+  proposed: Date,
+  existing: Date,
+  bufferMinutes = DEPARTURE_CONFLICT_MINUTES
+): boolean {
+  const diffMs = Math.abs(proposed.getTime() - existing.getTime());
+  return diffMs <= bufferMinutes * 60 * 1000;
+}
+
+export async function findConflictingUserDeparture(
+  userId: string,
+  departureAt: Date
+): Promise<Date | null> {
+  const rows = await db
+    .select({ departureAt: carpools.departureAt })
+    .from(carpoolMemberships)
+    .innerJoin(carpools, eq(carpoolMemberships.carpoolId, carpools.id))
+    .where(
+      and(
+        eq(carpoolMemberships.userId, userId),
+        inArray(carpools.status, ["OPEN", "LOCKED"])
+      )
+    );
+
+  for (const row of rows) {
+    if (hasDepartureTimeConflict(departureAt, row.departureAt)) {
+      return row.departureAt;
+    }
+  }
+
+  return null;
+}
 
 export async function getMembership(carpoolId: string, userId: string) {
   const [membership] = await db

@@ -9,6 +9,7 @@ import {
   users,
 } from "../db/schema.js";
 import { authenticate } from "../middleware/auth.js";
+import { findConflictingUserDeparture } from "../services/carpool.service.js";
 
 const JOIN_CUTOFF_MINUTES = 30;
 
@@ -84,9 +85,14 @@ export async function carpoolRoutes(app: FastifyInstance) {
         .where(eq(users.id, userId))
         .limit(1);
 
-      if (user?.activeCarpoolId) {
+      const conflictingDeparture = await findConflictingUserDeparture(
+        userId,
+        departureAt
+      );
+      if (conflictingDeparture) {
         return reply.status(409).send({
-          message: "You already belong to an active carpool",
+          message:
+            "Departure time is too close to one of your existing trips (within 15 minutes). Choose a different time.",
         });
       }
 
@@ -119,10 +125,12 @@ export async function carpoolRoutes(app: FastifyInstance) {
         carpoolId: carpool.id,
       });
 
-      await db
-        .update(users)
-        .set({ activeCarpoolId: carpool.id, updatedAt: new Date() })
-        .where(eq(users.id, userId));
+      if (!user?.activeCarpoolId) {
+        await db
+          .update(users)
+          .set({ activeCarpoolId: carpool.id, updatedAt: new Date() })
+          .where(eq(users.id, userId));
+      }
 
       return reply.status(201).send(carpool);
     }
