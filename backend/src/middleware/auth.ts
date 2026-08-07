@@ -29,18 +29,22 @@ export async function authenticate(
 
   try {
     if (isSupabaseAuthConfigured()) {
-      const payload = verifySupabaseAccessToken(token);
-      const { user } = await findOrCreateUser(payload.email!);
+      try {
+        const payload = verifySupabaseAccessToken(token);
+        const { user } = await findOrCreateUser(payload.email!);
 
-      if (user.isBanned) {
-        return reply.status(403).send({ message: "Account suspended" });
+        if (user.isBanned) {
+          return reply.status(403).send({ message: "Account suspended" });
+        }
+
+        request.user = {
+          sub: user.id,
+          email: user.campusEmail,
+        };
+        return;
+      } catch {
+        // Fall through to legacy JWT when token is from backend OTP fallback.
       }
-
-      request.user = {
-        sub: user.id,
-        email: user.campusEmail,
-      };
-      return;
     }
 
     request.user = verifyAccessToken(token);

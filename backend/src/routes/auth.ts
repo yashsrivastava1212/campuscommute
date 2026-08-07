@@ -10,6 +10,10 @@ import {
   serializeUser,
 } from "../services/auth.service.js";
 import {
+  isSupabaseAdminConfigured,
+  issueSupabaseSessionTokenHash,
+} from "../lib/supabase-admin.js";
+import {
   OtpRateLimitError,
   sendOtp,
   verifyOtp,
@@ -93,11 +97,21 @@ export async function authRoutes(app: FastifyInstance) {
     const { user, isNewUser } = await findOrCreateUser(email);
     const tokens = await issueAuthTokens(user);
 
+    let supabaseTokenHash: string | undefined;
+    if (isSupabaseAdminConfigured()) {
+      try {
+        supabaseTokenHash = await issueSupabaseSessionTokenHash(email);
+      } catch (error) {
+        request.log.error(error);
+      }
+    }
+
     return reply.send({
       access_token: tokens.accessToken,
       refresh_token: tokens.refreshToken,
       expires_in: tokens.expiresIn,
       user: serializeUser(user, isNewUser),
+      ...(supabaseTokenHash ? { supabase_token_hash: supabaseTokenHash } : {}),
     });
   });
 

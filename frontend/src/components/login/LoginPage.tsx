@@ -7,6 +7,7 @@ import { BrandLogo } from "@/components/brand/BrandLogo";
 import { EmailStep } from "@/components/login/EmailStep";
 import { OtpStep } from "@/components/login/OtpStep";
 import { useAuth } from "@/context/AuthProvider";
+import { sendBackendOtp, verifyBackendOtp } from "@/lib/api";
 import { assertSupabase } from "@/lib/supabase";
 
 type Step = "email" | "otp";
@@ -25,6 +26,7 @@ function LoginContent() {
 
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
+  const [devOtp, setDevOtp] = useState<string | undefined>();
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState("");
 
@@ -41,23 +43,18 @@ function LoginContent() {
     }
 
     try {
-      const supabase = assertSupabase();
-      const { error } = await supabase.auth.signInWithOtp({
-        email: normalizedEmail,
-        options: { shouldCreateUser: true },
-      });
-
-      if (error) {
-        throw new Error(error.message);
-      }
+      const result = await sendBackendOtp(normalizedEmail);
 
       setEmail(normalizedEmail);
+      setDevOtp(result.devOtp);
       setStep("otp");
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : "Something went wrong. Try again.";
+        error instanceof TypeError && error.message === "Failed to fetch"
+          ? "Cannot reach the API. Check NEXT_PUBLIC_API_URL on the frontend service and CORS_ORIGIN on the backend."
+          : error instanceof Error
+            ? error.message
+            : "Something went wrong. Try again.";
 
       setApiError(message);
     } finally {
@@ -70,10 +67,17 @@ function LoginContent() {
     setApiError("");
 
     try {
+      const { supabaseTokenHash } = await verifyBackendOtp(email, otp);
+
+      if (!supabaseTokenHash) {
+        throw new Error(
+          "Login succeeded but session setup failed. Add SUPABASE_SERVICE_ROLE_KEY to the backend on Railway and redeploy."
+        );
+      }
+
       const supabase = assertSupabase();
       const { error } = await supabase.auth.verifyOtp({
-        email,
-        token: otp,
+        token_hash: supabaseTokenHash,
         type: "email",
       });
 
@@ -141,10 +145,12 @@ function LoginContent() {
             ) : (
               <OtpStep
                 email={email}
+                devOtp={devOtp}
                 onVerify={verifyOtp}
                 onResend={() => sendOtp(email)}
                 onChangeEmail={() => {
                   setStep("email");
+                  setDevOtp(undefined);
                   setApiError("");
                 }}
                 isLoading={isLoading}

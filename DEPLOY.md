@@ -36,6 +36,12 @@ Both web services deploy from the same GitHub repo.
 | `ALLOWED_EMAIL_DOMAIN` | `gim.ac.in` |
 | `SUPABASE_URL` | `https://YOUR-PROJECT.supabase.co` |
 | `SUPABASE_JWT_SECRET` | Supabase → Project Settings → JWT (not the Secret API key) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Settings → API → **service_role** key (backend only, never expose to frontend) |
+| `SMTP_HOST` | `smtp.gmail.com` |
+| `SMTP_PORT` | `587` |
+| `SMTP_USER` | your Gmail address |
+| `SMTP_PASS` | Google App Password (16 chars) |
+| `EMAIL_FROM` | `CampusCommute <your@gmail.com>` |
 | `ALLOW_DEV_OTP` | `false` (legacy backend OTP only; Supabase sends login emails) |
 
 Do **not** set `USE_PGLITE` in production.
@@ -120,9 +126,26 @@ Login uses **Supabase Auth** for passwordless OTP. The Railway backend verifies 
 | Service | Variable |
 |---------|----------|
 | Frontend | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_API_URL` |
-| Backend | `SUPABASE_URL`, `SUPABASE_JWT_SECRET`, `CORS_ORIGIN`, `ALLOWED_EMAIL_DOMAIN=gim.ac.in` |
+| Backend | `SUPABASE_URL`, `SUPABASE_JWT_SECRET`, `SUPABASE_SERVICE_ROLE_KEY`, `CORS_ORIGIN`, `ALLOWED_EMAIL_DOMAIN=gim.ac.in` |
+| Backend | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` — **sends OTP emails** (Gmail app password) |
 
 Only `@gim.ac.in` addresses can sign in (enforced in Supabase flow + backend).
+
+**OTP emails are sent by the Railway backend** (Gmail SMTP), not Supabase. Supabase handles sessions after OTP verification. You do not need Supabase custom SMTP for login to work.
+
+### If you still want Supabase SMTP (optional)
+
+Supabase's built-in email only works for team members. Custom SMTP in Supabase often fails with Gmail (`Error sending confirmation email`). Common fixes:
+
+1. Open **Authentication → Logs** in Supabase for the exact error.
+2. **Host:** `smtp.gmail.com` only — no `http://`, no trailing spaces.
+3. **Port:** `587`
+4. **Username:** your full Gmail address
+5. **Password:** 16-character Google App Password (not your Gmail password)
+6. **Sender email:** must match the Gmail account
+7. Swapped **admin email** vs **username** is a common mistake
+
+With the backend email path above, Supabase SMTP is optional.
 
 ---
 

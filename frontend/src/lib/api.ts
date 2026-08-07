@@ -65,6 +65,61 @@ export async function apiFetch<T>(
   return data as T;
 }
 
+export async function sendBackendOtp(email: string): Promise<{
+  devOtp?: string;
+}> {
+  const response = await fetch(`${API_URL}/api/v1/auth/send-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readApiError(response, "Failed to send verification code.")
+    );
+  }
+
+  const data = (await response.json()) as {
+    email_sent?: boolean;
+    dev_otp?: string;
+  };
+
+  return {
+    devOtp:
+      data.email_sent === false && typeof data.dev_otp === "string"
+        ? data.dev_otp
+        : undefined,
+  };
+}
+
+export async function verifyBackendOtp(
+  email: string,
+  otp: string
+): Promise<{ supabaseTokenHash?: string }> {
+  const response = await fetch(`${API_URL}/api/v1/auth/verify-otp`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, otp }),
+  });
+
+  const data = (await response.json()) as {
+    message?: string;
+    supabase_token_hash?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(data.message ?? "Verification failed");
+  }
+
+  return {
+    supabaseTokenHash:
+      typeof data.supabase_token_hash === "string"
+        ? data.supabase_token_hash
+        : undefined,
+  };
+}
+
 export async function logout() {
   const { assertSupabase } = await import("./supabase");
   await assertSupabase().auth.signOut();
