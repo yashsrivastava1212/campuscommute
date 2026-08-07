@@ -97,7 +97,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   const navItems: NavItem[] = [
-    { href: "/my-trip", label: "My Trips", icon: Map, match: (p) => p === "/my-trip" },
+    { href: "/my-trip", label: "My Bookings", icon: Map, match: (p) => p === "/my-trip" },
     {
       href: "/carpools",
       label: "Browse Rides",

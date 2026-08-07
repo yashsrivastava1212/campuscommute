@@ -95,6 +95,29 @@ export async function joinRequestRoutes(app: FastifyInstance) {
   );
 
   app.get(
+    "/api/v1/carpools/:id/my-join-request",
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const userId = request.user!.sub;
+
+      const [requestRow] = await db
+        .select({ status: joinRequests.status })
+        .from(joinRequests)
+        .where(
+          and(
+            eq(joinRequests.carpoolId, id),
+            eq(joinRequests.requesterId, userId)
+          )
+        )
+        .orderBy(desc(joinRequests.requestedAt))
+        .limit(1);
+
+      return reply.send({ status: requestRow?.status ?? null });
+    }
+  );
+
+  app.get(
     "/api/v1/carpools/:id/join-requests",
     { preHandler: authenticate },
     async (request, reply) => {

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import { AppShell } from "@/components/MainNav";
 import { DiscussionPanel } from "@/components/DiscussionPanel";
@@ -52,14 +52,23 @@ type CarpoolDetail = {
 export default function MyTripPage() {
   return (
     <AuthGuard>
-      <MyTripContent />
+      <Suspense
+        fallback={
+          <AppShell>
+            <p className="py-12 text-center text-body-md text-on-variant">Loading your bookings…</p>
+          </AppShell>
+        }
+      >
+        <MyTripContent />
+      </Suspense>
     </AuthGuard>
   );
 }
 
 function MyTripContent() {
   const searchParams = useSearchParams();
-  const preferredTripId = searchParams.get("trip");
+  const router = useRouter();
+  const tripFromUrl = useRef(searchParams.get("trip"));
   const { user, refreshUser } = useAuth();
   const [trips, setTrips] = useState<CarpoolDetail[]>([]);
   const [createdTrips, setCreatedTrips] = useState<CarpoolDetail[]>([]);
@@ -103,49 +112,73 @@ function MyTripContent() {
     }
   }
 
-  function loadTrips(preferredTripId?: string | null) {
-    setLoading(true);
-    apiFetch<{
-      carpool: CarpoolDetail | null;
-      carpools: CarpoolDetail[];
-      createdTrips: CarpoolDetail[];
-      joinedTrips: CarpoolDetail[];
-    }>("/api/v1/carpools/mine/active")
-      .then(async (data) => {
-        const normalize = (trip: CarpoolDetail) => ({
-          ...trip,
-          members: trip.members ?? [],
+  const loadTrips = useCallback(
+    (preferredTripId?: string | null, options?: { silent?: boolean }) => {
+      if (!options?.silent) {
+        setLoading(true);
+      }
+
+      apiFetch<{
+        carpool: CarpoolDetail | null;
+        carpools: CarpoolDetail[];
+        createdTrips: CarpoolDetail[];
+        joinedTrips: CarpoolDetail[];
+      }>("/api/v1/carpools/mine/active")
+        .then(async (data) => {
+          const normalize = (trip: CarpoolDetail) => ({
+            ...trip,
+            members: trip.members ?? [],
+          });
+          const loadedTrips = (data.carpools ?? []).map(normalize);
+          const loadedCreated = (
+            data.createdTrips ?? loadedTrips.filter((trip) => trip.ownerId === user?.id)
+          ).map(normalize);
+          const loadedJoined = (
+            data.joinedTrips ?? loadedTrips.filter((trip) => trip.ownerId !== user?.id)
+          ).map(normalize);
+
+          setTrips(loadedTrips);
+          setCreatedTrips(loadedCreated);
+          setJoinedTrips(loadedJoined);
+
+          const nextSelectedId =
+            (preferredTripId && loadedTrips.some((trip) => trip.id === preferredTripId)
+              ? preferredTripId
+              : null) ??
+            (user?.activeCarpoolId &&
+            loadedTrips.some((trip) => trip.id === user.activeCarpoolId)
+              ? user.activeCarpoolId
+              : null) ??
+            loadedTrips[0]?.id ??
+            null;
+
+          setSelectedTripId(nextSelectedId);
+
+          const selectedTrip = loadedTrips.find((trip) => trip.id === nextSelectedId);
+          if (selectedTrip) {
+            syncTripForm(selectedTrip);
+            await loadJoinRequests(selectedTrip);
+          } else {
+            setJoinRequests([]);
+          }
+        })
+        .catch((err) => setError(err instanceof Error ? err.message : "Failed to load bookings"))
+        .finally(() => {
+          if (!options?.silent) {
+            setLoading(false);
+          }
         });
-        const loadedTrips = (data.carpools ?? []).map(normalize);
-        const loadedCreated = (data.createdTrips ?? loadedTrips.filter((trip) => trip.ownerId === user?.id)).map(normalize);
-        const loadedJoined = (data.joinedTrips ?? loadedTrips.filter((trip) => trip.ownerId !== user?.id)).map(normalize);
-        setTrips(loadedTrips);
-        setCreatedTrips(loadedCreated);
-        setJoinedTrips(loadedJoined);
+    },
+    [user?.id, user?.activeCarpoolId]
+  );
 
-        const nextSelectedId =
-          (preferredTripId && loadedTrips.some((trip) => trip.id === preferredTripId)
-            ? preferredTripId
-            : null) ??
-          (user?.activeCarpoolId &&
-          loadedTrips.some((trip) => trip.id === user.activeCarpoolId)
-            ? user.activeCarpoolId
-            : null) ??
-          loadedTrips[0]?.id ??
-          null;
-
-        setSelectedTripId(nextSelectedId);
-
-        const selectedTrip = loadedTrips.find((trip) => trip.id === nextSelectedId);
-        if (selectedTrip) {
-          syncTripForm(selectedTrip);
-          await loadJoinRequests(selectedTrip);
-        } else {
-          setJoinRequests([]);
-        }
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load trips"))
-      .finally(() => setLoading(false));
+  function selectTrip(tripId: string) {
+    const trip = trips.find((item) => item.id === tripId);
+    if (!trip) return;
+    setSelectedTripId(tripId);
+    syncTripForm(trip);
+    loadJoinRequests(trip).catch(() => undefined);
+    router.replace(`/my-trip?trip=${tripId}`, { scroll: false });
   }
 
   useEffect(() => {
@@ -155,16 +188,9 @@ function MyTripContent() {
   }, []);
 
   useEffect(() => {
-    loadTrips(preferredTripId);
-  }, [user?.id, preferredTripId]);
-
-  useEffect(() => {
-    if (!selectedTripId) return;
-    const trip = trips.find((item) => item.id === selectedTripId);
-    if (!trip) return;
-    syncTripForm(trip);
-    loadJoinRequests(trip).catch(() => undefined);
-  }, [selectedTripId]);
+    if (!user?.id) return;
+    loadTrips(tripFromUrl.current);
+  }, [user?.id, loadTrips]);
 
   async function handleJoinAction(id: string, action: "accept" | "reject") {
     setActionLoading(true);
@@ -173,7 +199,7 @@ function MyTripContent() {
         method: "PATCH",
         body: JSON.stringify({ action }),
       });
-      loadTrips(selectedTripId);
+      loadTrips(selectedTripId, { silent: true });
       await refreshUser();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Action failed");
@@ -188,7 +214,7 @@ function MyTripContent() {
     setError("");
     try {
       await apiFetch(`/api/v1/carpools/${carpool.id}/lock`, { method: "POST", body: "{}" });
-      loadTrips(carpool.id);
+      loadTrips(carpool.id, { silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to lock");
     } finally {
@@ -202,7 +228,7 @@ function MyTripContent() {
     setError("");
     try {
       await apiFetch(`/api/v1/carpools/${carpool.id}/unlock`, { method: "POST", body: "{}" });
-      loadTrips(carpool.id);
+      loadTrips(carpool.id, { silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to unlock");
     } finally {
@@ -249,7 +275,7 @@ function MyTripContent() {
         }),
       });
       setEditing(false);
-      loadTrips(carpool.id);
+      loadTrips(carpool.id, { silent: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -264,7 +290,7 @@ function MyTripContent() {
     try {
       await apiFetch(`/api/v1/carpools/${carpool.id}/leave`, { method: "POST", body: "{}" });
       await refreshUser();
-      loadTrips();
+      loadTrips(undefined, { silent: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to leave");
     } finally {
@@ -279,7 +305,7 @@ function MyTripContent() {
     try {
       await apiFetch(`/api/v1/carpools/${carpool.id}`, { method: "DELETE" });
       await refreshUser();
-      loadTrips();
+      loadTrips(undefined, { silent: false });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to cancel");
     } finally {
@@ -290,7 +316,7 @@ function MyTripContent() {
   if (loading) {
     return (
       <AppShell>
-        <p className="py-12 text-center text-body-md text-on-variant">Loading your trips…</p>
+        <p className="py-12 text-center text-body-md text-on-variant">Loading your bookings…</p>
       </AppShell>
     );
   }
@@ -299,9 +325,9 @@ function MyTripContent() {
     return (
       <AppShell>
         <div className="mx-auto max-w-lg py-16 text-center">
-          <h1 className="text-headline-lg text-on-surface">My Trips</h1>
+          <h1 className="text-headline-lg text-on-surface">My Bookings</h1>
           <p className="mt-2 text-body-lg text-on-variant">
-            You&apos;re not on an active ride yet. Browse open trips or create your own.
+            You don&apos;t have any active bookings yet. Browse open trips or create your own.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
             <Link href="/carpools" className="btn-primary--inline">
@@ -319,7 +345,7 @@ function MyTripContent() {
   if (!carpool) {
     return (
       <AppShell>
-        <p className="py-12 text-center text-body-md text-on-variant">Loading your trips…</p>
+        <p className="py-12 text-center text-body-md text-on-variant">Loading your bookings…</p>
       </AppShell>
     );
   }
@@ -328,11 +354,11 @@ function MyTripContent() {
     <AppShell>
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-headline-lg text-on-surface">My Trips</h1>
+          <h1 className="text-headline-lg text-on-surface">My Bookings</h1>
           <p className="mt-1.5 text-body-lg text-on-variant">
             {trips.length > 1
-              ? `${trips.length} active trips — select one to manage.`
-              : "Your active journey — manage, chat, and coordinate here."}
+              ? `${trips.length} active bookings — select one to manage.`
+              : "Your active booking — manage, chat, and coordinate here."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -355,7 +381,7 @@ function MyTripContent() {
                     selected={trip.id === selectedTripId}
                     badge="Owner"
                     footer="Created by you"
-                    onSelect={() => setSelectedTripId(trip.id)}
+                    onSelect={() => selectTrip(trip.id)}
                   />
                 ))}
               </div>
@@ -373,7 +399,7 @@ function MyTripContent() {
                     selected={trip.id === selectedTripId}
                     badge="Member"
                     footer={`Trip created by ${trip.ownerDisplayName}`}
-                    onSelect={() => setSelectedTripId(trip.id)}
+                    onSelect={() => selectTrip(trip.id)}
                   />
                 ))}
               </div>

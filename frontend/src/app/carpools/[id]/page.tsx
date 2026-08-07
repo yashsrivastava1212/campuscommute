@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import { AppShell } from "@/components/MainNav";
 import { DiscussionPanel } from "@/components/DiscussionPanel";
@@ -65,7 +65,6 @@ export default function CarpoolDetailPage() {
 
 function DetailContent() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const { user } = useAuth();
   const [carpool, setCarpool] = useState<CarpoolDetail | null>(null);
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
@@ -95,6 +94,20 @@ function DetailContent() {
           apiFetch<{ joinRequests: JoinRequest[] }>(`/api/v1/carpools/${params.id}/join-requests`)
             .then((d) => setJoinRequests(d.joinRequests.filter((j) => j.status === "PENDING")))
             .catch(() => undefined);
+        } else {
+          setJoinRequests([]);
+        }
+
+        if (
+          user &&
+          user.id !== data.ownerId &&
+          !data.members?.some((member) => member.userId === user.id)
+        ) {
+          apiFetch<{ status: string | null }>(`/api/v1/carpools/${params.id}/my-join-request`)
+            .then((d) => setMyRequest(d.status))
+            .catch(() => setMyRequest(null));
+        } else {
+          setMyRequest(null);
         }
       })
       .catch(() => undefined);
@@ -112,9 +125,9 @@ function DetailContent() {
 
     apiFetch<{
       carpools: Array<{ id: string; departureAt: string; status: string }>;
-    }>("/api/v1/users/me/carpools")
+    }>("/api/v1/carpools/mine/active")
       .then((data) => {
-        const conflict = data.carpools.some(
+        const conflict = (data.carpools ?? []).some(
           (trip) =>
             trip.id !== carpool.id &&
             (trip.status === "OPEN" || trip.status === "LOCKED") &&
@@ -124,12 +137,6 @@ function DetailContent() {
       })
       .catch(() => setHasTripSameDay(false));
   }, [user, carpool]);
-
-  useEffect(() => {
-    if (carpool && user && (isOwner || isMember)) {
-      router.replace(`/my-trip?trip=${carpool.id}`);
-    }
-  }, [carpool, user, isOwner, isMember, router]);
 
   async function requestJoin() {
     setLoading(true);
@@ -248,9 +255,9 @@ function DetailContent() {
               {viewRole === "requester" && (
                 <p className="text-body-md text-amber-accent">Join request pending owner approval</p>
               )}
-              {isMember && !isOwner && (
-                <Link href="/my-trip" className="btn-primary">
-                  Go to My Trips
+              {(isOwner || isMember) && (
+                <Link href={`/my-trip?trip=${carpool.id}`} className="btn-primary">
+                  {isOwner ? "Manage in My Bookings" : "Go to My Bookings"}
                 </Link>
               )}
               {hasTripSameDay && !isMember && (
