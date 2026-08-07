@@ -4,13 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, LogOut } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { useAuth } from "@/context/AuthProvider";
+import { resolveDisplayName } from "@/lib/format";
 
 export function UserMenu() {
   const { user, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  const displayName = user?.displayName ?? "Student";
+  const displayName = resolveDisplayName(user?.displayName, user?.email);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {

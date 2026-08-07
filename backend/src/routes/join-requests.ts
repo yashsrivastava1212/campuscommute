@@ -9,6 +9,7 @@ import {
   users,
 } from "../db/schema.js";
 import { authenticate } from "../middleware/auth.js";
+import { resolveDisplayName } from "../lib/display-name.js";
 import {
   findUserTripOnSameDay,
   getMembership,
@@ -76,7 +77,7 @@ export async function joinRequestRoutes(app: FastifyInstance) {
         .returning();
 
       const [requester] = await db
-        .select({ displayName: users.displayName })
+        .select({ displayName: users.displayName, campusEmail: users.campusEmail })
         .from(users)
         .where(eq(users.id, userId))
         .limit(1);
@@ -85,7 +86,7 @@ export async function joinRequestRoutes(app: FastifyInstance) {
         userId: carpool.ownerId,
         type: "JOIN_REQUEST",
         title: "New join request",
-        body: `${requester?.displayName ?? "A student"} requested to join your carpool to ${carpool.destination}.`,
+        body: `${resolveDisplayName(requester?.displayName, requester?.campusEmail)} requested to join your carpool to ${carpool.destination}.`,
         metadata: { carpoolId: id, joinRequestId: jr.id },
       });
 
@@ -111,13 +112,22 @@ export async function joinRequestRoutes(app: FastifyInstance) {
           requestedAt: joinRequests.requestedAt,
           requesterId: joinRequests.requesterId,
           displayName: users.displayName,
+          campusEmail: users.campusEmail,
         })
         .from(joinRequests)
         .innerJoin(users, eq(joinRequests.requesterId, users.id))
         .where(eq(joinRequests.carpoolId, id))
         .orderBy(desc(joinRequests.requestedAt));
 
-      return reply.send({ joinRequests: rows });
+      return reply.send({
+        joinRequests: rows.map((row) => ({
+          id: row.id,
+          status: row.status,
+          requestedAt: row.requestedAt,
+          requesterId: row.requesterId,
+          displayName: resolveDisplayName(row.displayName, row.campusEmail),
+        })),
+      });
     }
   );
 
@@ -184,8 +194,15 @@ export async function joinRequestRoutes(app: FastifyInstance) {
 
       await db.update(joinRequests).set({ status: "ACCEPTED", updatedAt: new Date() }).where(eq(joinRequests.id, id));
 
-      const [requester] = await db.select({ displayName: users.displayName }).from(users).where(eq(users.id, jr.requesterId)).limit(1);
-      await postSystemMessage(carpool.id, `${requester?.displayName ?? "A member"} joined the carpool.`);
+      const [requester] = await db
+        .select({ displayName: users.displayName, campusEmail: users.campusEmail })
+        .from(users)
+        .where(eq(users.id, jr.requesterId))
+        .limit(1);
+      await postSystemMessage(
+        carpool.id,
+        `${resolveDisplayName(requester?.displayName, requester?.campusEmail)} joined the carpool.`
+      );
 
       await createNotification({
         userId: jr.requesterId,

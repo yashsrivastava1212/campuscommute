@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "../db/index.js";
 import { carpoolMemberships, carpools, users } from "../db/schema.js";
 import { encryptPhone } from "../lib/crypto.js";
+import { resolveDisplayName } from "../lib/display-name.js";
 import { authenticate } from "../middleware/auth.js";
 
 const updateProfileSchema = z.object({
@@ -31,7 +32,7 @@ export async function userRoutes(app: FastifyInstance) {
       return reply.send({
         id: user.id,
         email: user.campusEmail,
-        displayName: user.displayName,
+        displayName: resolveDisplayName(user.displayName, user.campusEmail),
         profileComplete: Boolean(user.displayName),
         activeCarpoolId: user.activeCarpoolId,
         isAdmin: user.isAdmin,

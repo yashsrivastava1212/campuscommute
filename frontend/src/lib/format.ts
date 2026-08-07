@@ -1,3 +1,24 @@
+export function nameFromEmail(email: string) {
+  const local = email.split("@")[0]?.trim() ?? "";
+  if (!local) return email;
+
+  return local
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+export function resolveDisplayName(
+  displayName?: string | null,
+  email?: string | null
+) {
+  const trimmed = displayName?.trim();
+  if (trimmed) return trimmed;
+  if (email?.trim()) return nameFromEmail(email);
+  return "Student";
+}
+
 export function getCalendarDateKey(iso: string | Date, timeZone = "Asia/Kolkata") {
   const date = typeof iso === "string" ? new Date(iso) : iso;
   return new Intl.DateTimeFormat("en-CA", {

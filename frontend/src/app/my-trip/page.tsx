@@ -44,7 +44,7 @@ type CarpoolDetail = {
   isLocked: boolean;
   notes: string | null;
   ownerId: string;
-  ownerDisplayName: string | null;
+  ownerDisplayName: string;
   joinCutoffAt: string;
   members: Member[];
 };
@@ -372,7 +372,7 @@ function MyTripContent() {
                     trip={trip}
                     selected={trip.id === selectedTripId}
                     badge="Member"
-                    footer={`Trip created by ${trip.ownerDisplayName ?? "Student"}`}
+                    footer={`Trip created by ${trip.ownerDisplayName}`}
                     onSelect={() => setSelectedTripId(trip.id)}
                   />
                 ))}
@@ -401,7 +401,7 @@ function MyTripContent() {
               <ul className="mt-4 space-y-3">
                 {joinRequests.map((jr) => (
                   <li key={jr.id} className="flex items-center justify-between gap-3 text-body-md">
-                    <span className="font-medium text-on-surface">{jr.displayName ?? "Student"}</span>
+                    <span className="font-medium text-on-surface">{jr.displayName}</span>
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleJoinAction(jr.id, "accept")}
@@ -548,9 +548,9 @@ function MyTripContent() {
                 <li key={m.id} className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2.5">
                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-muted text-label-md font-medium text-on-variant">
-                      {(m.displayName ?? "S")[0]?.toUpperCase()}
+                      {(m.displayName ?? "?")[0]?.toUpperCase()}
                     </div>
-                    <span className="text-body-md text-on-surface">{m.displayName ?? "Student"}</span>
+                    <span className="text-body-md text-on-surface">{m.displayName}</span>
                   </div>
                   <span className={m.role === "OWNER" ? "badge-owner" : "badge-member"}>
                     {m.role === "OWNER" ? "Owner" : "Member"}

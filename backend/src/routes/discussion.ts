@@ -10,6 +10,7 @@ import {
   users,
 } from "../db/schema.js";
 import { authenticate } from "../middleware/auth.js";
+import { resolveDisplayName } from "../lib/display-name.js";
 import { getMembership } from "../services/carpool.service.js";
 import { createNotification } from "../services/notification.service.js";
 import { decryptPhone } from "../lib/crypto.js";
@@ -36,13 +37,26 @@ export async function discussionRoutes(app: FastifyInstance) {
           sentAt: messages.sentAt,
           senderId: messages.senderId,
           displayName: users.displayName,
+          campusEmail: users.campusEmail,
         })
         .from(messages)
         .leftJoin(users, eq(messages.senderId, users.id))
         .where(eq(messages.roomId, room.id))
         .orderBy(asc(messages.sentAt));
 
-      return reply.send({ messages: rows, roomStatus: room.status });
+      return reply.send({
+        messages: rows.map((row) => ({
+          id: row.id,
+          body: row.body,
+          isSystem: row.isSystem,
+          sentAt: row.sentAt,
+          senderId: row.senderId,
+          displayName: row.isSystem
+            ? null
+            : resolveDisplayName(row.displayName, row.campusEmail),
+        })),
+        roomStatus: room.status,
+      });
     }
   );
 

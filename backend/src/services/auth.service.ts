@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { institutes, refreshTokens, users } from "../db/schema.js";
 import { normalizeEmail } from "../lib/email-domain.js";
+import { nameFromEmail, resolveDisplayName } from "../lib/display-name.js";
 import {
   getRefreshTokenExpiry,
   hashToken,
@@ -50,6 +51,17 @@ export async function findOrCreateUser(email: string): Promise<{
         .returning();
       return { user: updated, isNewUser: false };
     }
+    if (!existing.displayName) {
+      const [updated] = await db
+        .update(users)
+        .set({
+          displayName: nameFromEmail(normalized),
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, existing.id))
+        .returning();
+      return { user: updated, isNewUser: false };
+    }
     return { user: existing, isNewUser: false };
   }
 
@@ -57,6 +69,7 @@ export async function findOrCreateUser(email: string): Promise<{
     .insert(users)
     .values({
       campusEmail: normalized,
+      displayName: nameFromEmail(normalized),
       instituteId: institute?.id,
       verificationStatus: "VERIFIED",
       verifiedAt: new Date(),
@@ -129,7 +142,7 @@ export function serializeUser(user: AuthUser, isNewUser: boolean) {
   return {
     id: user.id,
     email: user.campusEmail,
-    displayName: user.displayName,
+    displayName: resolveDisplayName(user.displayName, user.campusEmail),
     isNewUser,
     profileComplete: Boolean(user.displayName),
   };

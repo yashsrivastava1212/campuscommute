@@ -9,6 +9,7 @@ import {
   users,
 } from "../db/schema.js";
 import { authenticate } from "../middleware/auth.js";
+import { resolveDisplayName } from "../lib/display-name.js";
 import { findUserTripOnSameDay } from "../services/carpool.service.js";
 
 const JOIN_CUTOFF_MINUTES = 30;
@@ -165,13 +166,28 @@ export async function carpoolRoutes(app: FastifyInstance) {
         notes: carpools.notes,
         ownerId: carpools.ownerId,
         ownerDisplayName: users.displayName,
+        ownerEmail: users.campusEmail,
       })
       .from(carpools)
       .innerJoin(users, eq(carpools.ownerId, users.id))
       .where(and(...conditions))
       .orderBy(desc(carpools.departureAt));
 
-    return reply.send({ carpools: rows });
+    return reply.send({
+      carpools: rows.map((row) => ({
+        id: row.id,
+        origin: row.origin,
+        destination: row.destination,
+        departureAt: row.departureAt,
+        totalSeats: row.totalSeats,
+        seatsAvailable: row.seatsAvailable,
+        status: row.status,
+        isLocked: row.isLocked,
+        notes: row.notes,
+        ownerId: row.ownerId,
+        ownerDisplayName: resolveDisplayName(row.ownerDisplayName, row.ownerEmail),
+      })),
+    });
   });
 
   app.get(
@@ -227,12 +243,15 @@ export async function carpoolRoutes(app: FastifyInstance) {
       const ownerIds = [...new Set(uniqueTrips.map((trip) => trip.ownerId))];
 
       const ownerRows = await db
-        .select({ id: users.id, displayName: users.displayName })
+        .select({ id: users.id, displayName: users.displayName, campusEmail: users.campusEmail })
         .from(users)
         .where(inArray(users.id, ownerIds));
 
       const ownerNames = new Map(
-        ownerRows.map((owner) => [owner.id, owner.displayName])
+        ownerRows.map((owner) => [
+          owner.id,
+          resolveDisplayName(owner.displayName, owner.campusEmail),
+        ])
       );
 
       const memberRows = await db
@@ -243,21 +262,29 @@ export async function carpoolRoutes(app: FastifyInstance) {
           role: carpoolMemberships.role,
           joinedAt: carpoolMemberships.joinedAt,
           displayName: users.displayName,
+          campusEmail: users.campusEmail,
         })
         .from(carpoolMemberships)
         .innerJoin(users, eq(carpoolMemberships.userId, users.id))
         .where(inArray(carpoolMemberships.carpoolId, carpoolIds));
 
-      const membersByCarpool = new Map<string, typeof memberRows>();
+      const membersByCarpool = new Map<string, Array<Omit<(typeof memberRows)[number], "campusEmail"> & { displayName: string }>>();
       for (const member of memberRows) {
         const list = membersByCarpool.get(member.carpoolId) ?? [];
-        list.push(member);
+        list.push({
+          id: member.id,
+          carpoolId: member.carpoolId,
+          userId: member.userId,
+          role: member.role,
+          joinedAt: member.joinedAt,
+          displayName: resolveDisplayName(member.displayName, member.campusEmail),
+        });
         membersByCarpool.set(member.carpoolId, list);
       }
 
       const carpoolsWithMembers = uniqueTrips.map((trip) => ({
         ...trip,
-        ownerDisplayName: ownerNames.get(trip.ownerId) ?? null,
+        ownerDisplayName: ownerNames.get(trip.ownerId) ?? resolveDisplayName(null),
         members: membersByCarpool.get(trip.id) ?? [],
       }));
 
@@ -316,6 +343,15 @@ export async function carpoolRoutes(app: FastifyInstance) {
       return reply.status(404).send({ message: "Carpool not found" });
     }
 
+    const [owner] = await db
+      .select({
+        displayName: users.displayName,
+        campusEmail: users.campusEmail,
+      })
+      .from(users)
+      .where(eq(users.id, carpool.ownerId))
+      .limit(1);
+
     const members = await db
       .select({
         id: carpoolMemberships.id,
@@ -323,12 +359,23 @@ export async function carpoolRoutes(app: FastifyInstance) {
         role: carpoolMemberships.role,
         joinedAt: carpoolMemberships.joinedAt,
         displayName: users.displayName,
+        campusEmail: users.campusEmail,
       })
       .from(carpoolMemberships)
       .innerJoin(users, eq(carpoolMemberships.userId, users.id))
       .where(eq(carpoolMemberships.carpoolId, id));
 
-    return reply.send({ ...carpool, members });
+    return reply.send({
+      ...carpool,
+      ownerDisplayName: resolveDisplayName(owner?.displayName, owner?.campusEmail),
+      members: members.map((member) => ({
+        id: member.id,
+        userId: member.userId,
+        role: member.role,
+        joinedAt: member.joinedAt,
+        displayName: resolveDisplayName(member.displayName, member.campusEmail),
+      })),
+    });
   });
 
   app.patch(
