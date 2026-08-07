@@ -18,6 +18,7 @@ type Carpool = {
   departureAt: string;
   seatsAvailable: number;
   totalSeats: number;
+  ownerDisplayName: string | null;
 };
 
 export default function BrowseCarpoolsPage() {
@@ -134,6 +135,7 @@ function BrowseContent() {
               departureAt={carpool.departureAt}
               seatsAvailable={carpool.seatsAvailable}
               totalSeats={carpool.totalSeats}
+              ownerName={carpool.ownerDisplayName ?? "Student"}
               href={`/carpools/${carpool.id}`}
             />
           ))}

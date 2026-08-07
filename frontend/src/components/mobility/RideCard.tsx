@@ -10,7 +10,7 @@ type RideCardProps = {
   seatsAvailable: number;
   totalSeats: number;
   href?: string;
-  hostName?: string;
+  ownerName?: string;
   className?: string;
 };
 
@@ -20,7 +20,7 @@ export function RideCard({
   departureAt,
   seatsAvailable,
   href,
-  hostName,
+  ownerName,
   className = "",
 }: RideCardProps) {
   const full = seatsAvailable <= 0;
@@ -50,9 +50,10 @@ export function RideCard({
       </div>
 
       <div className="mt-5 flex items-center justify-between gap-3 border-t border-border/60 pt-4">
-        {hostName ? (
+        {ownerName ? (
           <p className="text-body-md text-on-variant">
-            Hosted by <span className="font-medium text-on-surface">{hostName}</span>
+            Trip created by{" "}
+            <span className="font-medium text-on-surface">{ownerName}</span>
           </p>
         ) : (
           <span />

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { and, desc, eq, gte, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/index.js";
 import {
@@ -164,8 +164,10 @@ export async function carpoolRoutes(app: FastifyInstance) {
         isLocked: carpools.isLocked,
         notes: carpools.notes,
         ownerId: carpools.ownerId,
+        ownerDisplayName: users.displayName,
       })
       .from(carpools)
+      .innerJoin(users, eq(carpools.ownerId, users.id))
       .where(and(...conditions))
       .orderBy(desc(carpools.departureAt));
 
@@ -184,22 +186,58 @@ export async function carpoolRoutes(app: FastifyInstance) {
         .where(eq(users.id, userId))
         .limit(1);
 
-      if (!user?.activeCarpoolId) {
-        return reply.send({ carpool: null });
-      }
+      const membershipRows = await db
+        .select()
+        .from(carpoolMemberships)
+        .innerJoin(carpools, eq(carpoolMemberships.carpoolId, carpools.id))
+        .where(
+          and(
+            eq(carpoolMemberships.userId, userId),
+            inArray(carpools.status, ["OPEN", "LOCKED"])
+          )
+        );
 
-      const [carpool] = await db
+      const ownedRows = await db
         .select()
         .from(carpools)
-        .where(eq(carpools.id, user.activeCarpoolId))
-        .limit(1);
+        .where(
+          and(
+            eq(carpools.ownerId, userId),
+            inArray(carpools.status, ["OPEN", "LOCKED"])
+          )
+        );
 
-      if (!carpool || carpool.status === "CANCELLED") {
-        return reply.send({ carpool: null });
+      const tripMap = new Map<string, (typeof membershipRows)[number]["carpools"]>();
+      for (const row of membershipRows) {
+        tripMap.set(row.carpools.id, row.carpools);
+      }
+      for (const trip of ownedRows) {
+        tripMap.set(trip.id, trip);
       }
 
-      const members = await db
+      const uniqueTrips = Array.from(tripMap.values()).sort(
+        (a, b) => a.departureAt.getTime() - b.departureAt.getTime()
+      );
+
+      if (uniqueTrips.length === 0) {
+        return reply.send({ carpool: null, carpools: [], createdTrips: [], joinedTrips: [] });
+      }
+
+      const carpoolIds = uniqueTrips.map((trip) => trip.id);
+      const ownerIds = [...new Set(uniqueTrips.map((trip) => trip.ownerId))];
+
+      const ownerRows = await db
+        .select({ id: users.id, displayName: users.displayName })
+        .from(users)
+        .where(inArray(users.id, ownerIds));
+
+      const ownerNames = new Map(
+        ownerRows.map((owner) => [owner.id, owner.displayName])
+      );
+
+      const memberRows = await db
         .select({
+          carpoolId: carpoolMemberships.carpoolId,
           id: carpoolMemberships.id,
           userId: carpoolMemberships.userId,
           role: carpoolMemberships.role,
@@ -208,9 +246,34 @@ export async function carpoolRoutes(app: FastifyInstance) {
         })
         .from(carpoolMemberships)
         .innerJoin(users, eq(carpoolMemberships.userId, users.id))
-        .where(eq(carpoolMemberships.carpoolId, carpool.id));
+        .where(inArray(carpoolMemberships.carpoolId, carpoolIds));
 
-      return reply.send({ carpool: { ...carpool, members } });
+      const membersByCarpool = new Map<string, typeof memberRows>();
+      for (const member of memberRows) {
+        const list = membersByCarpool.get(member.carpoolId) ?? [];
+        list.push(member);
+        membersByCarpool.set(member.carpoolId, list);
+      }
+
+      const carpoolsWithMembers = uniqueTrips.map((trip) => ({
+        ...trip,
+        ownerDisplayName: ownerNames.get(trip.ownerId) ?? null,
+        members: membersByCarpool.get(trip.id) ?? [],
+      }));
+
+      const createdTrips = carpoolsWithMembers.filter((trip) => trip.ownerId === userId);
+      const joinedTrips = carpoolsWithMembers.filter((trip) => trip.ownerId !== userId);
+
+      const primary =
+        carpoolsWithMembers.find((trip) => trip.id === user?.activeCarpoolId) ??
+        carpoolsWithMembers[0];
+
+      return reply.send({
+        carpool: primary,
+        carpools: carpoolsWithMembers,
+        createdTrips,
+        joinedTrips,
+      });
     }
   );
 

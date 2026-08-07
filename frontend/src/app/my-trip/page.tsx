@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import { AppShell } from "@/components/MainNav";
 import { DiscussionPanel } from "@/components/DiscussionPanel";
+import { RouteDisplay } from "@/components/mobility/RouteDisplay";
 import { TripInfoGrid } from "@/components/TripInfoGrid";
 import {
   findLocation,
@@ -13,6 +15,7 @@ import {
 } from "@/components/LocationSelect";
 import { useAuth } from "@/context/AuthProvider";
 import { apiFetch } from "@/lib/api";
+import { formatRideDate, formatRideTime } from "@/lib/format";
 
 type Member = {
   id: string;
@@ -41,6 +44,7 @@ type CarpoolDetail = {
   isLocked: boolean;
   notes: string | null;
   ownerId: string;
+  ownerDisplayName: string | null;
   joinCutoffAt: string;
   members: Member[];
 };
@@ -54,8 +58,13 @@ export default function MyTripPage() {
 }
 
 function MyTripContent() {
+  const searchParams = useSearchParams();
+  const preferredTripId = searchParams.get("trip");
   const { user, refreshUser } = useAuth();
-  const [carpool, setCarpool] = useState<CarpoolDetail | null>(null);
+  const [trips, setTrips] = useState<CarpoolDetail[]>([]);
+  const [createdTrips, setCreatedTrips] = useState<CarpoolDetail[]>([]);
+  const [joinedTrips, setJoinedTrips] = useState<CarpoolDetail[]>([]);
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
   const [error, setError] = useState("");
@@ -69,35 +78,73 @@ function MyTripContent() {
   const [totalSeats, setTotalSeats] = useState(4);
   const [notes, setNotes] = useState("");
 
+  const carpool = trips.find((trip) => trip.id === selectedTripId) ?? null;
   const isOwner = user?.id === carpool?.ownerId;
   const isMember = Boolean(carpool?.members?.some((m) => m.userId === user?.id));
   const isLocked = carpool?.status === "LOCKED" || carpool?.isLocked;
 
-  function loadTrip() {
-    setLoading(true);
-    apiFetch<{ carpool: CarpoolDetail | null }>("/api/v1/carpools/mine/active")
-      .then((data) => {
-        const trip = data.carpool;
-        setCarpool(trip ? { ...trip, members: trip.members ?? [] } : null);
-        if (trip) {
-          setOriginId(trip.originId ?? "");
-          setDestinationId(trip.destinationId ?? "");
-          setDepartureAt(new Date(trip.departureAt).toISOString().slice(0, 16));
-          setTotalSeats(trip.totalSeats);
-          setNotes(trip.notes ?? "");
+  function syncTripForm(trip: CarpoolDetail) {
+    setOriginId(trip.originId ?? "");
+    setDestinationId(trip.destinationId ?? "");
+    setDepartureAt(new Date(trip.departureAt).toISOString().slice(0, 16));
+    setTotalSeats(trip.totalSeats);
+    setNotes(trip.notes ?? "");
+    setEditing(false);
+  }
 
-          if (user?.id === trip.ownerId && trip.status === "OPEN") {
-            apiFetch<{ joinRequests: JoinRequest[] }>(
-              `/api/v1/carpools/${trip.id}/join-requests`
-            )
-              .then((d) => setJoinRequests(d.joinRequests.filter((j) => j.status === "PENDING")))
-              .catch(() => undefined);
-          } else {
-            setJoinRequests([]);
-          }
+  async function loadJoinRequests(trip: CarpoolDetail) {
+    if (user?.id === trip.ownerId && trip.status === "OPEN") {
+      const data = await apiFetch<{ joinRequests: JoinRequest[] }>(
+        `/api/v1/carpools/${trip.id}/join-requests`
+      );
+      setJoinRequests(data.joinRequests.filter((j) => j.status === "PENDING"));
+    } else {
+      setJoinRequests([]);
+    }
+  }
+
+  function loadTrips(preferredTripId?: string | null) {
+    setLoading(true);
+    apiFetch<{
+      carpool: CarpoolDetail | null;
+      carpools: CarpoolDetail[];
+      createdTrips: CarpoolDetail[];
+      joinedTrips: CarpoolDetail[];
+    }>("/api/v1/carpools/mine/active")
+      .then(async (data) => {
+        const normalize = (trip: CarpoolDetail) => ({
+          ...trip,
+          members: trip.members ?? [],
+        });
+        const loadedTrips = (data.carpools ?? []).map(normalize);
+        const loadedCreated = (data.createdTrips ?? loadedTrips.filter((trip) => trip.ownerId === user?.id)).map(normalize);
+        const loadedJoined = (data.joinedTrips ?? loadedTrips.filter((trip) => trip.ownerId !== user?.id)).map(normalize);
+        setTrips(loadedTrips);
+        setCreatedTrips(loadedCreated);
+        setJoinedTrips(loadedJoined);
+
+        const nextSelectedId =
+          (preferredTripId && loadedTrips.some((trip) => trip.id === preferredTripId)
+            ? preferredTripId
+            : null) ??
+          (user?.activeCarpoolId &&
+          loadedTrips.some((trip) => trip.id === user.activeCarpoolId)
+            ? user.activeCarpoolId
+            : null) ??
+          loadedTrips[0]?.id ??
+          null;
+
+        setSelectedTripId(nextSelectedId);
+
+        const selectedTrip = loadedTrips.find((trip) => trip.id === nextSelectedId);
+        if (selectedTrip) {
+          syncTripForm(selectedTrip);
+          await loadJoinRequests(selectedTrip);
+        } else {
+          setJoinRequests([]);
         }
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load trip"))
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load trips"))
       .finally(() => setLoading(false));
   }
 
@@ -108,8 +155,16 @@ function MyTripContent() {
   }, []);
 
   useEffect(() => {
-    loadTrip();
-  }, [user?.id]);
+    loadTrips(preferredTripId);
+  }, [user?.id, preferredTripId]);
+
+  useEffect(() => {
+    if (!selectedTripId) return;
+    const trip = trips.find((item) => item.id === selectedTripId);
+    if (!trip) return;
+    syncTripForm(trip);
+    loadJoinRequests(trip).catch(() => undefined);
+  }, [selectedTripId]);
 
   async function handleJoinAction(id: string, action: "accept" | "reject") {
     setActionLoading(true);
@@ -118,7 +173,7 @@ function MyTripContent() {
         method: "PATCH",
         body: JSON.stringify({ action }),
       });
-      loadTrip();
+      loadTrips(selectedTripId);
       await refreshUser();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Action failed");
@@ -133,7 +188,7 @@ function MyTripContent() {
     setError("");
     try {
       await apiFetch(`/api/v1/carpools/${carpool.id}/lock`, { method: "POST", body: "{}" });
-      loadTrip();
+      loadTrips(carpool.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to lock");
     } finally {
@@ -147,7 +202,7 @@ function MyTripContent() {
     setError("");
     try {
       await apiFetch(`/api/v1/carpools/${carpool.id}/unlock`, { method: "POST", body: "{}" });
-      loadTrip();
+      loadTrips(carpool.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to unlock");
     } finally {
@@ -194,7 +249,7 @@ function MyTripContent() {
         }),
       });
       setEditing(false);
-      loadTrip();
+      loadTrips(carpool.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -209,7 +264,7 @@ function MyTripContent() {
     try {
       await apiFetch(`/api/v1/carpools/${carpool.id}/leave`, { method: "POST", body: "{}" });
       await refreshUser();
-      setCarpool(null);
+      loadTrips();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to leave");
     } finally {
@@ -224,7 +279,7 @@ function MyTripContent() {
     try {
       await apiFetch(`/api/v1/carpools/${carpool.id}`, { method: "DELETE" });
       await refreshUser();
-      setCarpool(null);
+      loadTrips();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to cancel");
     } finally {
@@ -235,12 +290,12 @@ function MyTripContent() {
   if (loading) {
     return (
       <AppShell>
-        <p className="py-12 text-center text-body-md text-on-variant">Loading your trip…</p>
+        <p className="py-12 text-center text-body-md text-on-variant">Loading your trips…</p>
       </AppShell>
     );
   }
 
-  if (!carpool) {
+  if (trips.length === 0) {
     return (
       <AppShell>
         <div className="mx-auto max-w-lg py-16 text-center">
@@ -261,13 +316,23 @@ function MyTripContent() {
     );
   }
 
+  if (!carpool) {
+    return (
+      <AppShell>
+        <p className="py-12 text-center text-body-md text-on-variant">Loading your trips…</p>
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell>
       <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-headline-lg text-on-surface">My Trips</h1>
           <p className="mt-1.5 text-body-lg text-on-variant">
-            Your active journey — manage, chat, and coordinate here.
+            {trips.length > 1
+              ? `${trips.length} active trips — select one to manage.`
+              : "Your active journey — manage, chat, and coordinate here."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -276,6 +341,46 @@ function MyTripContent() {
           {isLocked && <span className="badge-pending">Locked</span>}
         </div>
       </div>
+
+      {trips.length > 0 && (
+        <div className="mb-8 space-y-6">
+          {createdTrips.length > 0 && (
+            <div>
+              <p className="label-field mb-3">Trips you created</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {createdTrips.map((trip) => (
+                  <TripSelectCard
+                    key={trip.id}
+                    trip={trip}
+                    selected={trip.id === selectedTripId}
+                    badge="Owner"
+                    footer="Created by you"
+                    onSelect={() => setSelectedTripId(trip.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {joinedTrips.length > 0 && (
+            <div>
+              <p className="label-field mb-3">Trips you joined</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {joinedTrips.map((trip) => (
+                  <TripSelectCard
+                    key={trip.id}
+                    trip={trip}
+                    selected={trip.id === selectedTripId}
+                    badge="Member"
+                    footer={`Trip created by ${trip.ownerDisplayName ?? "Student"}`}
+                    onSelect={() => setSelectedTripId(trip.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="mb-8 rounded-2xl border border-emerald/20 bg-white p-6 shadow-[var(--shadow-card)]">
         <TripInfoGrid
@@ -459,5 +564,47 @@ function MyTripContent() {
 
       {error && <p className="mt-4 text-body-md text-error">{error}</p>}
     </AppShell>
+  );
+}
+
+function TripSelectCard({
+  trip,
+  selected,
+  badge,
+  footer,
+  onSelect,
+}: {
+  trip: CarpoolDetail;
+  selected: boolean;
+  badge: "Owner" | "Member";
+  footer: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`rounded-2xl border bg-white p-4 text-left shadow-[var(--shadow-card)] transition-colors ${
+        selected
+          ? "border-emerald ring-2 ring-emerald/20"
+          : "border-border hover:border-emerald/40"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-label-md font-medium tracking-wide text-on-variant">
+            {formatRideDate(trip.departureAt)}
+          </p>
+          <p className="mt-1 text-xl font-semibold text-on-surface">
+            {formatRideTime(trip.departureAt)}
+          </p>
+        </div>
+        <span className={badge === "Owner" ? "badge-owner" : "badge-member"}>{badge}</span>
+      </div>
+      <div className="mt-4">
+        <RouteDisplay origin={trip.origin} destination={trip.destination} compact />
+      </div>
+      <p className="mt-4 border-t border-border/60 pt-3 text-body-md text-on-variant">{footer}</p>
+    </button>
   );
 }

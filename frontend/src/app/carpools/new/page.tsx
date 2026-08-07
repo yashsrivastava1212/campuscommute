@@ -116,7 +116,7 @@ function CreateContent() {
         }),
       });
       await refreshUser();
-      router.push(hadActiveTrip ? `/carpools/${created.id}` : "/my-trip");
+      router.push(hadActiveTrip ? `/my-trip?trip=${created.id}` : "/my-trip");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create carpool");
     } finally {

@@ -127,7 +127,7 @@ function DetailContent() {
 
   useEffect(() => {
     if (carpool && user && (isOwner || isMember)) {
-      router.replace("/my-trip");
+      router.replace(`/my-trip?trip=${carpool.id}`);
     }
   }, [carpool, user, isOwner, isMember, router]);
 
