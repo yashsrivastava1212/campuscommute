@@ -1,4 +1,4 @@
-import dns from "node:dns/promises";
+import dns from "node:dns";
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
 import "../env.js";
@@ -35,6 +35,15 @@ export function isUsingResendTestSender(fromEmail = getFromEmail()): boolean {
   return /@resend\.dev/i.test(fromEmail);
 }
 
+export function getBrevoApiKey(): string | null {
+  const raw = process.env.BREVO_API_KEY?.trim();
+  return raw ? stripQuotes(raw) : null;
+}
+
+export function isBrevoConfigured(): boolean {
+  return Boolean(getBrevoApiKey());
+}
+
 export function isSmtpConfigured(): boolean {
   return Boolean(
     process.env.SMTP_HOST?.trim() &&
@@ -46,16 +55,21 @@ export function isSmtpConfigured(): boolean {
 export function getEmailDeliveryStatus() {
   const fromEmail = getFromEmail();
   const resendConfigured = Boolean(getResendApiKey());
+  const brevoConfigured = isBrevoConfigured();
   const smtpConfigured = isSmtpConfigured();
   const usingTestSender = isUsingResendTestSender(fromEmail);
   const canDeliverToGimInbox =
-    smtpConfigured || (resendConfigured && !usingTestSender);
+    brevoConfigured || smtpConfigured || (resendConfigured && !usingTestSender);
 
   let guidance =
-    "Configure free Gmail SMTP (SMTP_HOST, SMTP_USER, SMTP_PASS, EMAIL_FROM) or verified Resend domain.";
+    "Configure Brevo API (BREVO_API_KEY), Gmail SMTP, or verified Resend domain.";
 
-  if (smtpConfigured) {
-    guidance = "Gmail SMTP is configured — OTP can be sent to @gim.ac.in inboxes.";
+  if (brevoConfigured) {
+    guidance =
+      "Brevo API is configured — OTP can be sent to @gim.ac.in inboxes over HTTPS (works on Railway Hobby).";
+  } else if (smtpConfigured) {
+    guidance =
+      "Gmail SMTP is configured. On Railway Hobby/Free, SMTP ports are blocked — use BREVO_API_KEY instead.";
   } else if (resendConfigured && !usingTestSender) {
     guidance = "Resend is configured for production delivery.";
   } else if (resendConfigured && usingTestSender) {
@@ -67,6 +81,7 @@ export function getEmailDeliveryStatus() {
   }
 
   return {
+    brevoConfigured,
     resendConfigured,
     smtpConfigured,
     fromEmail,
@@ -127,6 +142,58 @@ function buildOtpText(otp: string): string {
   ].join("\n");
 }
 
+function parseFromEmail(from: string): { name: string; email: string } {
+  const match = from.match(/^(.+?)\s*<([^>]+)>$/);
+  if (match) {
+    return { name: match[1].trim(), email: match[2].trim() };
+  }
+  return { name: "CampusCommute", email: from.trim() };
+}
+
+function formatSmtpError(message: string): string {
+  if (/timeout|ENETUNREACH|ECONNREFUSED|ETIMEDOUT/i.test(message)) {
+    return [
+      "Gmail SMTP cannot connect from Railway Hobby/Free (SMTP ports 587/465 are blocked).",
+      "Add BREVO_API_KEY for free HTTPS email, upgrade Railway to Pro, or set ALLOW_DEV_OTP=true for on-screen OTP.",
+    ].join(" ");
+  }
+
+  return `Gmail SMTP failed: ${message}. Check SMTP_USER, SMTP_PASS (Google App Password), and EMAIL_FROM.`;
+}
+
+async function sendViaBrevo(
+  to: string,
+  subject: string,
+  html: string,
+  text: string
+): Promise<void> {
+  const apiKey = getBrevoApiKey();
+  if (!apiKey) {
+    throw new Error("BREVO_API_KEY is not configured");
+  }
+
+  const sender = parseFromEmail(getFromEmail());
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method: "POST",
+    headers: {
+      "api-key": apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      sender,
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+      textContent: text,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text();
+    throw new Error(body || `Brevo request failed (HTTP ${response.status})`);
+  }
+}
+
 async function sendViaSmtp(
   to: string,
   subject: string,
@@ -139,17 +206,26 @@ async function sendViaSmtp(
   const pass = stripQuotes(process.env.SMTP_PASS!.trim());
   const from = getFromEmail();
 
-  const [smtpHost] = await dns.resolve4(host);
-
   const transport = nodemailer.createTransport({
-    host: smtpHost,
+    host,
     port,
     secure: port === 465,
     auth: { user, pass },
-    tls: {
-      servername: host,
+    connectionTimeout: 20_000,
+    greetingTimeout: 20_000,
+    socketTimeout: 30_000,
+    lookup: (
+      hostname: string,
+      _options: dns.LookupOptions,
+      callback: (
+        err: NodeJS.ErrnoException | null,
+        address: string,
+        family: number
+      ) => void
+    ) => {
+      dns.lookup(hostname, { family: 4 }, callback);
     },
-  });
+  } as nodemailer.TransportOptions);
 
   await transport.sendMail({ from, to, subject, html, text });
 }
@@ -166,6 +242,25 @@ export async function sendOtpEmail(
   const html = buildOtpHtml(otp);
   const text = buildOtpText(otp);
 
+  if (isBrevoConfigured()) {
+    try {
+      await sendViaBrevo(email, subject, html, text);
+      console.log(`[OK] OTP email sent via Brevo to ${email}`);
+      return { delivered: true };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Unknown Brevo error";
+      console.error(`[ERROR] Brevo failed for ${email}: ${message}`);
+
+      if (isDevOtpAllowed()) {
+        console.warn(`[DEV] Falling back to on-screen OTP for ${email}: ${otp}`);
+        return { delivered: false };
+      }
+
+      throw new Error(`Brevo email failed: ${message}`);
+    }
+  }
+
   if (isSmtpConfigured()) {
     try {
       await sendViaSmtp(email, subject, html, text);
@@ -181,9 +276,7 @@ export async function sendOtpEmail(
         return { delivered: false };
       }
 
-      throw new Error(
-        `Gmail SMTP failed: ${message}. Check SMTP_USER, SMTP_PASS (Google App Password), and EMAIL_FROM on Railway.`
-      );
+      throw new Error(formatSmtpError(message));
     }
   }
 
@@ -199,7 +292,7 @@ export async function sendOtpEmail(
     throw new Error(
       [
         "No email provider configured.",
-        "For a free setup, add Gmail SMTP variables on Railway (SMTP_HOST, SMTP_USER, SMTP_PASS, EMAIL_FROM).",
+        "Add BREVO_API_KEY (free, works on Railway Hobby), or Gmail SMTP on Railway Pro.",
       ].join(" ")
     );
   }

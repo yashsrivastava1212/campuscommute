@@ -19,7 +19,11 @@ async function start() {
 
   const emailStatus = getEmailDeliveryStatus();
   if (emailStatus.canDeliverToGimInbox) {
-    const via = emailStatus.smtpConfigured ? "Gmail SMTP" : "Resend";
+    const via = emailStatus.brevoConfigured
+      ? "Brevo API"
+      : emailStatus.smtpConfigured
+        ? "Gmail SMTP"
+        : "Resend";
     console.log(`[OK] Email delivery ready via ${via} — from ${emailStatus.fromEmail}`);
   } else {
     console.warn(`[WARN] Email delivery not ready: ${emailStatus.guidance}`);
