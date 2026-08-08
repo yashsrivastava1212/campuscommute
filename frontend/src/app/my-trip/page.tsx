@@ -353,6 +353,28 @@ function MyTripContent() {
     }
   }
 
+  async function wipeAllCreatedRides() {
+    if (
+      !confirm(
+        "Remove ALL rides you created? This cannot be undone. Joined rides you did not create will stay."
+      )
+    ) {
+      return;
+    }
+    setActionLoading(true);
+    setError("");
+    try {
+      await apiFetch("/api/v1/carpools/mine/created", { method: "DELETE" });
+      await refreshUser();
+      loadedOnceRef.current = false;
+      loadTrips(undefined, { silent: false });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to clear created rides");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   async function cancelTrip() {
     if (!carpool || !confirm("Cancel this carpool for all members?")) return;
     setActionLoading(true);
@@ -427,7 +449,17 @@ function MyTripContent() {
         <div className="mb-8 space-y-6">
           {createdTrips.length > 0 && (
             <div>
-              <p className="label-field mb-3">Created by Me</p>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <p className="label-field">Created by Me</p>
+                <button
+                  type="button"
+                  onClick={wipeAllCreatedRides}
+                  disabled={actionLoading}
+                  className="text-label-md text-error hover:underline disabled:opacity-50"
+                >
+                  Clear all my created rides
+                </button>
+              </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 {createdTrips.map((trip) => (
                   <TripSelectCard
