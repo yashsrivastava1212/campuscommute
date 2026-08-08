@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { and, asc, desc, eq, gte, inArray, lt, ne } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/index.js";
 import {
@@ -41,7 +41,8 @@ const updateCarpoolSchema = z.object({
 const browseQuerySchema = z.object({
   destination: z.string().optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  status: z.enum(["OPEN", "LOCKED"]).optional().default("OPEN"),
+  /** When omitted, returns OPEN and LOCKED carpools (browsable/active). */
+  status: z.enum(["OPEN", "LOCKED"]).optional(),
 });
 
 function computeJoinCutoff(departureAt: Date): Date {
@@ -154,10 +155,13 @@ export async function carpoolRoutes(app: FastifyInstance) {
     }
 
     const now = new Date();
-    const conditions = [
-      eq(carpools.status, parsed.data.status),
-      gte(carpools.departureAt, now),
-    ];
+    const conditions = [gte(carpools.departureAt, now)];
+
+    if (parsed.data.status) {
+      conditions.push(eq(carpools.status, parsed.data.status));
+    } else {
+      conditions.push(inArray(carpools.status, ["OPEN", "LOCKED"]));
+    }
 
     if (parsed.data.destination) {
       conditions.push(eq(carpools.destination, parsed.data.destination));
@@ -170,9 +174,6 @@ export async function carpoolRoutes(app: FastifyInstance) {
     }
 
     const viewerId = request.user?.sub;
-    if (viewerId) {
-      conditions.push(ne(carpools.ownerId, viewerId));
-    }
 
     const rows = await db
       .select({
@@ -207,6 +208,7 @@ export async function carpoolRoutes(app: FastifyInstance) {
         notes: row.notes,
         ownerId: row.ownerId,
         ownerDisplayName: resolveDisplayName(row.ownerDisplayName, row.ownerEmail),
+        isOwn: viewerId ? row.ownerId === viewerId : false,
       })),
     });
   });

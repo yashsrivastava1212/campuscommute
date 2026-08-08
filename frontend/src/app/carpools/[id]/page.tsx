@@ -253,6 +253,9 @@ function DetailContent() {
           {viewRole === "requester" && <span className="badge-pending">Pending Approval</span>}
           {isMember && !isOwner && <span className="badge-member">Joined</span>}
           {isOwner && <span className="badge-owner">Your ride</span>}
+          {(carpool.status === "LOCKED" || carpool.isLocked) && (
+            <span className="badge-pending">Locked</span>
+          )}
         </div>
       </div>
 
@@ -352,6 +355,11 @@ function DetailContent() {
                 >
                   {isOwner ? "Manage in My Bookings" : "Go to My Bookings"}
                 </Link>
+              )}
+              {(carpool.status === "LOCKED" || carpool.isLocked) && !isMember && !isOwner && (
+                <p className="text-body-md text-on-variant">
+                  This ride is locked by the creator. New join requests are not accepted.
+                </p>
               )}
               {hasTripSameDay && !isMember && !isOwner && (
                 <p className="text-body-md text-on-variant">

@@ -11,6 +11,8 @@ type RideCardProps = {
   totalSeats: number;
   href?: string;
   ownerName?: string;
+  status?: string;
+  isOwn?: boolean;
   className?: string;
 };
 
@@ -21,24 +23,31 @@ export function RideCard({
   seatsAvailable,
   href,
   ownerName,
+  status,
+  isOwn,
   className = "",
 }: RideCardProps) {
   const full = seatsAvailable <= 0;
+  const locked = status === "LOCKED";
   const content = (
     <>
       <div className="flex items-start justify-between gap-4">
         <span className="text-label-md font-medium tracking-wide text-on-variant">
           {formatRideDate(departureAt)}
         </span>
-        <span
-          className={`rounded-full px-2.5 py-0.5 text-label-md font-medium ${
-            full
-              ? "bg-surface-muted text-muted"
-              : "bg-emerald-light text-emerald-dark ring-1 ring-emerald/15"
-          }`}
-        >
-          {seatsLabel(seatsAvailable)}
-        </span>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {locked && <span className="badge-pending">Locked</span>}
+          {isOwn && <span className="badge-owner">Your ride</span>}
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-label-md font-medium ${
+              full || locked
+                ? "bg-surface-muted text-muted"
+                : "bg-emerald-light text-emerald-dark ring-1 ring-emerald/15"
+            }`}
+          >
+            {seatsLabel(seatsAvailable)}
+          </span>
+        </div>
       </div>
 
       <p className="mt-3 text-2xl font-semibold tracking-tight text-on-surface">

@@ -18,7 +18,9 @@ type Carpool = {
   departureAt: string;
   seatsAvailable: number;
   totalSeats: number;
+  status: string;
   ownerDisplayName: string;
+  isOwn?: boolean;
 };
 
 export default function BrowseCarpoolsPage() {
@@ -45,11 +47,12 @@ function BrowseContent() {
 
   useEffect(() => {
     setLoading(true);
-    const params = new URLSearchParams({ status: "OPEN" });
+    const params = new URLSearchParams();
     if (destination) params.set("destination", destination);
     if (date) params.set("date", date);
 
-    apiFetch<{ carpools: Carpool[] }>(`/api/v1/carpools?${params}`)
+    const query = params.toString();
+    apiFetch<{ carpools: Carpool[] }>(`/api/v1/carpools${query ? `?${query}` : ""}`)
       .then((data) => setCarpools(data.carpools))
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
       .finally(() => setLoading(false));
@@ -61,7 +64,7 @@ function BrowseContent() {
     <AppShell>
       <PageHeader
         title="Browse rides"
-        subtitle="Find rides from other students. Your own rides appear in My Bookings."
+        subtitle="All open and locked rides from the community, including rides you created."
         action={
           <Link href="/carpools/new" className="btn-primary--inline inline-flex items-center gap-2">
             <Plus className="h-4 w-4" aria-hidden />
@@ -135,6 +138,8 @@ function BrowseContent() {
               departureAt={carpool.departureAt}
               seatsAvailable={carpool.seatsAvailable}
               totalSeats={carpool.totalSeats}
+              status={carpool.status}
+              isOwn={carpool.isOwn}
               ownerName={carpool.ownerDisplayName}
               href={`/carpools/${carpool.id}`}
             />
