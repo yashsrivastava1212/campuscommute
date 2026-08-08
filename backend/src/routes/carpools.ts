@@ -11,9 +11,11 @@ import {
 import { authenticate, optionalAuthenticate } from "../middleware/auth.js";
 import { resolveDisplayName } from "../lib/display-name.js";
 import {
+  clearActiveCarpoolForMembers,
   findUserOwnedTripOnSameDay,
   findUserTripOnSameDay,
   getCalendarDayBounds,
+  wipeAllOwnedCarpools,
 } from "../services/carpool.service.js";
 
 const JOIN_CUTOFF_MINUTES = 30;
@@ -323,6 +325,22 @@ export async function carpoolRoutes(app: FastifyInstance) {
         carpools: carpoolsWithMembers,
         createdTrips,
         joinedTrips,
+      });
+    }
+  );
+
+  app.delete(
+    "/api/v1/carpools/mine/created",
+    { preHandler: authenticate },
+    async (request, reply) => {
+      const userId = request.user!.sub;
+      const cancelled = await wipeAllOwnedCarpools(userId);
+      return reply.send({
+        cancelled,
+        message:
+          cancelled > 0
+            ? "All rides you created have been removed."
+            : "No rides to remove.",
       });
     }
   );

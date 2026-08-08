@@ -13,7 +13,8 @@
     "db:migrate": "node dist/db/migrate.js",
     "db:migrate:dev": "tsx src/db/migrate.ts",
     "db:seed": "node dist/db/seed.js",
-    "db:seed:dev": "tsx src/db/seed.ts"
+    "db:seed:dev": "tsx src/db/seed.ts",
+    "wipe-user-carpools": "tsx --env-file=../.env scripts/wipe-user-carpools.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.4",

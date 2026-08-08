@@ -155,6 +155,29 @@ export async function clearActiveCarpoolForMembers(carpoolId: string) {
   }
 }
 
+/** Cancel every carpool owned by a user (fresh start). */
+export async function wipeAllOwnedCarpools(userId: string): Promise<number> {
+  const owned = await db
+    .select({ id: carpools.id })
+    .from(carpools)
+    .where(eq(carpools.ownerId, userId));
+
+  for (const row of owned) {
+    await db
+      .update(carpools)
+      .set({ status: "CANCELLED", isLocked: false, updatedAt: new Date() })
+      .where(eq(carpools.id, row.id));
+    await clearActiveCarpoolForMembers(row.id);
+  }
+
+  await db
+    .update(users)
+    .set({ activeCarpoolId: null, updatedAt: new Date() })
+    .where(eq(users.id, userId));
+
+  return owned.length;
+}
+
 export async function postSystemMessage(carpoolId: string, body: string) {
   const [room] = await db
     .select()

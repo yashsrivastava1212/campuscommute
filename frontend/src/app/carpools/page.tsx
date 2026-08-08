@@ -58,6 +58,29 @@ function BrowseContent() {
       .finally(() => setLoading(false));
   }, [destination, date]);
 
+  useEffect(() => {
+    function reloadBrowse() {
+      const params = new URLSearchParams();
+      if (destination) params.set("destination", destination);
+      if (date) params.set("date", date);
+      const query = params.toString();
+      apiFetch<{ carpools: Carpool[] }>(`/api/v1/carpools${query ? `?${query}` : ""}`)
+        .then((data) => setCarpools(data.carpools))
+        .catch(() => undefined);
+    }
+
+    function onVisible() {
+      if (document.visibilityState === "visible") reloadBrowse();
+    }
+
+    window.addEventListener("focus", reloadBrowse);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", reloadBrowse);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [destination, date]);
+
   const locationGroups = groupLocations(locations);
 
   return (
