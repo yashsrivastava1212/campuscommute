@@ -62,3 +62,42 @@ export async function authenticate(
     return reply.status(401).send({ message: "Invalid or expired token" });
   }
 }
+
+/** Sets request.user when a valid token is present; never rejects. */
+export async function optionalAuthenticate(
+  request: FastifyRequest,
+  _reply: FastifyReply
+) {
+  const header = request.headers.authorization;
+  if (!header?.startsWith("Bearer ")) return;
+
+  const token = header.slice(7);
+
+  try {
+    if (isSupabaseAuthConfigured()) {
+      try {
+        const payload = verifySupabaseAccessToken(token);
+        const { user } = await findOrCreateUser(payload.email!);
+        if (user.isBanned) return;
+        request.user = { sub: user.id, email: user.campusEmail };
+        return;
+      } catch {
+        // Fall through to legacy JWT.
+      }
+    }
+
+    request.user = verifyAccessToken(token);
+
+    const [user] = await db
+      .select({ isBanned: users.isBanned })
+      .from(users)
+      .where(eq(users.id, request.user.sub))
+      .limit(1);
+
+    if (user?.isBanned) {
+      delete request.user;
+    }
+  } catch {
+    delete request.user;
+  }
+}

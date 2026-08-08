@@ -61,7 +61,7 @@ function BrowseContent() {
     <AppShell>
       <PageHeader
         title="Browse rides"
-        subtitle="Find GIM students heading your way."
+        subtitle="Find rides from other students. Your own rides appear in My Bookings."
         action={
           <Link href="/carpools/new" className="btn-primary--inline inline-flex items-center gap-2">
             <Plus className="h-4 w-4" aria-hidden />

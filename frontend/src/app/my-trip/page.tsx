@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Suspense, useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import { AppShell } from "@/components/MainNav";
 import { DiscussionPanel } from "@/components/DiscussionPanel";
@@ -67,6 +67,7 @@ export default function MyTripPage() {
 
 function MyTripContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const urlTripId = searchParams.get("trip");
   const { user, refreshUser } = useAuth();
   const [trips, setTrips] = useState<CarpoolDetail[]>([]);
@@ -85,6 +86,7 @@ function MyTripContent() {
   const [departureAt, setDepartureAt] = useState("");
   const [totalSeats, setTotalSeats] = useState(4);
   const [notes, setNotes] = useState("");
+  const loadedOnceRef = useRef(false);
 
   const carpool = trips.find((trip) => trip.id === selectedTripId) ?? null;
   const isOwner = user?.id === carpool?.ownerId;
@@ -177,6 +179,13 @@ function MyTripContent() {
     setSelectedTripId(tripId);
     syncTripForm(trip);
     loadJoinRequests(trip).catch(() => undefined);
+    router.replace(`/my-trip?trip=${tripId}`, { scroll: false });
+    apiFetch("/api/v1/users/me", {
+      method: "PATCH",
+      body: JSON.stringify({ activeCarpoolId: tripId }),
+    })
+      .then(() => refreshUser())
+      .catch(() => undefined);
   }
 
   useEffect(() => {
@@ -195,7 +204,8 @@ function MyTripContent() {
         await refreshUser().catch(() => undefined);
       }
       if (!cancelled) {
-        loadTrips(urlTripId);
+        loadTrips(urlTripId, { silent: loadedOnceRef.current });
+        loadedOnceRef.current = true;
       }
     })();
 
@@ -329,6 +339,20 @@ function MyTripContent() {
     }
   }
 
+  async function removeMember(membershipId: string) {
+    if (!carpool || !confirm("Remove this member from the ride?")) return;
+    setActionLoading(true);
+    setError("");
+    try {
+      await apiFetch(`/api/v1/memberships/${membershipId}`, { method: "DELETE" });
+      loadTrips(carpool.id, { silent: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to remove member");
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   async function cancelTrip() {
     if (!carpool || !confirm("Cancel this carpool for all members?")) return;
     setActionLoading(true);
@@ -403,7 +427,7 @@ function MyTripContent() {
         <div className="mb-8 space-y-6">
           {createdTrips.length > 0 && (
             <div>
-              <p className="label-field mb-3">Trips you created</p>
+              <p className="label-field mb-3">Created by Me</p>
               <div className="grid gap-3 sm:grid-cols-2">
                 {createdTrips.map((trip) => (
                   <TripSelectCard
@@ -421,7 +445,7 @@ function MyTripContent() {
 
           {joinedTrips.length > 0 && (
             <div>
-              <p className="label-field mb-3">Trips you joined</p>
+              <p className="label-field mb-3">Joined Rides</p>
               <div className="grid gap-3 sm:grid-cols-2">
                 {joinedTrips.map((trip) => (
                   <TripSelectCard
@@ -452,32 +476,38 @@ function MyTripContent() {
 
       <div className="grid gap-stack-lg lg:grid-cols-12">
         <div className="space-y-stack-md lg:col-span-8">
-          {isOwner && !isLocked && joinRequests.length > 0 && (
+          {isOwner && !isLocked && (
             <div className="card border-emerald border-t-4 p-5">
               <h2 className="text-title-lg text-on-surface">Manage Requests</h2>
-              <ul className="mt-4 space-y-3">
-                {joinRequests.map((jr) => (
-                  <li key={jr.id} className="flex items-center justify-between gap-3 text-body-md">
-                    <span className="font-medium text-on-surface">{jr.displayName}</span>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleJoinAction(jr.id, "accept")}
-                        disabled={actionLoading}
-                        className="btn-emerald px-3 py-1.5"
-                      >
-                        Accept
-                      </button>
-                      <button
-                        onClick={() => handleJoinAction(jr.id, "reject")}
-                        disabled={actionLoading}
-                        className="btn-secondary w-auto px-3 py-1.5"
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              {joinRequests.length > 0 ? (
+                <ul className="mt-4 space-y-3">
+                  {joinRequests.map((jr) => (
+                    <li key={jr.id} className="flex items-center justify-between gap-3 text-body-md">
+                      <span className="font-medium text-on-surface">{jr.displayName}</span>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleJoinAction(jr.id, "accept")}
+                          disabled={actionLoading}
+                          className="btn-emerald px-3 py-1.5"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          onClick={() => handleJoinAction(jr.id, "reject")}
+                          disabled={actionLoading}
+                          className="btn-secondary w-auto px-3 py-1.5"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-4 text-body-md text-on-variant">
+                  No pending join requests for this ride.
+                </p>
+              )}
             </div>
           )}
 
@@ -557,7 +587,9 @@ function MyTripContent() {
           <div
             className={`card p-5 ${isOwner ? "border-emerald border-t-4" : "border-navy border-t-4"}`}
           >
-            <h2 className="text-title-lg text-on-surface">Trip Actions</h2>
+            <h2 className="text-title-lg text-on-surface">
+              {isOwner ? "Creator Controls" : "Member Actions"}
+            </h2>
 
             <div className="mt-6 space-y-2">
               {isOwner && (
@@ -609,9 +641,21 @@ function MyTripContent() {
                     </div>
                     <span className="text-body-md text-on-surface">{m.displayName}</span>
                   </div>
-                  <span className={m.role === "OWNER" ? "badge-owner" : "badge-member"}>
-                    {m.role === "OWNER" ? "Owner" : "Member"}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={m.role === "OWNER" ? "badge-owner" : "badge-member"}>
+                      {m.role === "OWNER" ? "Creator" : "Member"}
+                    </span>
+                    {isOwner && m.role !== "OWNER" && !isLocked && (
+                      <button
+                        type="button"
+                        onClick={() => removeMember(m.id)}
+                        disabled={actionLoading}
+                        className="text-label-md text-error hover:underline"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>

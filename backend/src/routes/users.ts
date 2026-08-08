@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/index.js";
 import { carpoolMemberships, carpools, users } from "../db/schema.js";
@@ -10,6 +10,7 @@ import { authenticate } from "../middleware/auth.js";
 const updateProfileSchema = z.object({
   displayName: z.string().min(2).max(100).optional(),
   phone: z.string().min(10).max(15).optional(),
+  activeCarpoolId: z.string().uuid().nullable().optional(),
 });
 
 export async function userRoutes(app: FastifyInstance) {
@@ -61,6 +62,31 @@ export async function userRoutes(app: FastifyInstance) {
         updates.phoneEncrypted = encryptPhone(parsed.data.phone);
       }
 
+      if (parsed.data.activeCarpoolId !== undefined) {
+        if (parsed.data.activeCarpoolId === null) {
+          updates.activeCarpoolId = null;
+        } else {
+          const membership = await db
+            .select({ id: carpoolMemberships.id })
+            .from(carpoolMemberships)
+            .innerJoin(carpools, eq(carpoolMemberships.carpoolId, carpools.id))
+            .where(
+              and(
+                eq(carpoolMemberships.userId, request.user!.sub),
+                eq(carpoolMemberships.carpoolId, parsed.data.activeCarpoolId),
+                inArray(carpools.status, ["OPEN", "LOCKED"])
+              )
+            )
+            .limit(1);
+
+          if (membership.length === 0) {
+            return reply.status(400).send({ message: "That booking is not active for your account" });
+          }
+
+          updates.activeCarpoolId = parsed.data.activeCarpoolId;
+        }
+      }
+
       const [user] = await db
         .update(users)
         .set(updates)
@@ -70,8 +96,10 @@ export async function userRoutes(app: FastifyInstance) {
       return reply.send({
         id: user.id,
         email: user.campusEmail,
-        displayName: user.displayName,
+        displayName: resolveDisplayName(user.displayName, user.campusEmail),
         profileComplete: Boolean(user.displayName),
+        activeCarpoolId: user.activeCarpoolId,
+        isAdmin: user.isAdmin,
       });
     }
   );

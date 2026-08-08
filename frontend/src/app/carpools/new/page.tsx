@@ -84,16 +84,30 @@ function CreateContent() {
 
     const proposedDeparture = new Date(departureAt);
     try {
-      const { carpools: myTrips } = await apiFetch<{
+      const { createdTrips, carpools: activeTrips } = await apiFetch<{
+        createdTrips: Array<{ departureAt: string; status: string }>;
         carpools: Array<{ departureAt: string; status: string }>;
-      }>("/api/v1/users/me/carpools");
-      const sameDayTrip = myTrips.some(
+      }>("/api/v1/carpools/mine/active");
+
+      const sameDayCreated = (createdTrips ?? []).some(
         (trip) =>
           (trip.status === "OPEN" || trip.status === "LOCKED") &&
           isSameCalendarDay(trip.departureAt, proposedDeparture)
       );
-      if (sameDayTrip) {
-        setError("You already have a trip on this date. You can only create one trip per day.");
+      if (sameDayCreated) {
+        setError("You already created a ride on this date. You can only create one ride per day.");
+        return;
+      }
+
+      const sameDayJoined = (activeTrips ?? []).some(
+        (trip) =>
+          (trip.status === "OPEN" || trip.status === "LOCKED") &&
+          isSameCalendarDay(trip.departureAt, proposedDeparture)
+      );
+      if (sameDayJoined) {
+        setError(
+          "You already have a trip on this date. Leave that booking before creating another ride."
+        );
         return;
       }
     } catch {

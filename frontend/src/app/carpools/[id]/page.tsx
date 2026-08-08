@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { AuthGuard } from "@/components/auth/AuthGuard";
 import { AppShell } from "@/components/MainNav";
@@ -65,13 +65,16 @@ export default function CarpoolDetailPage() {
 
 function DetailContent() {
   const params = useParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [carpool, setCarpool] = useState<CarpoolDetail | null>(null);
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
-  const [myRequest, setMyRequest] = useState<string | null>(null);
+  const [myRequestStatus, setMyRequestStatus] = useState<string | null>(null);
+  const [myRequestId, setMyRequestId] = useState<string | null>(null);
   const [hasTripSameDay, setHasTripSameDay] = useState(false);
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [pageError, setPageError] = useState("");
+  const [pageLoading, setPageLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
 
   const isOwner = user?.id === carpool?.ownerId;
   const myMembership = carpool?.members?.find((m) => m.userId === user?.id);
@@ -81,41 +84,51 @@ function DetailContent() {
     ? "owner"
     : isMember
       ? "member"
-      : myRequest === "PENDING"
+      : myRequestStatus === "PENDING"
         ? "requester"
         : "visitor";
 
-  function reload() {
-    if (!params.id) return;
-    apiFetch<CarpoolDetail>(`/api/v1/carpools/${params.id}`)
-      .then((data) => {
-        setCarpool({ ...data, members: data.members ?? [] });
-        if (user?.id === data.ownerId) {
-          apiFetch<{ joinRequests: JoinRequest[] }>(`/api/v1/carpools/${params.id}/join-requests`)
-            .then((d) => setJoinRequests(d.joinRequests.filter((j) => j.status === "PENDING")))
-            .catch(() => undefined);
-        } else {
-          setJoinRequests([]);
-        }
+  const reload = useCallback(async () => {
+    if (!params.id || !user?.id) return;
 
-        if (
-          user &&
-          user.id !== data.ownerId &&
-          !data.members?.some((member) => member.userId === user.id)
-        ) {
-          apiFetch<{ status: string | null }>(`/api/v1/carpools/${params.id}/my-join-request`)
-            .then((d) => setMyRequest(d.status))
-            .catch(() => setMyRequest(null));
-        } else {
-          setMyRequest(null);
-        }
-      })
-      .catch(() => undefined);
-  }
+    setPageLoading(true);
+    setPageError("");
+
+    try {
+      const data = await apiFetch<CarpoolDetail>(`/api/v1/carpools/${params.id}`);
+      setCarpool({ ...data, members: data.members ?? [] });
+
+      if (user.id === data.ownerId) {
+        const joinData = await apiFetch<{ joinRequests: JoinRequest[] }>(
+          `/api/v1/carpools/${params.id}/join-requests`
+        );
+        setJoinRequests(joinData.joinRequests.filter((j) => j.status === "PENDING"));
+        setMyRequestStatus(null);
+        setMyRequestId(null);
+      } else if (data.members?.some((member) => member.userId === user.id)) {
+        setJoinRequests([]);
+        setMyRequestStatus(null);
+        setMyRequestId(null);
+      } else {
+        setJoinRequests([]);
+        const requestData = await apiFetch<{ id: string | null; status: string | null }>(
+          `/api/v1/carpools/${params.id}/my-join-request`
+        );
+        setMyRequestStatus(requestData.status);
+        setMyRequestId(requestData.id);
+      }
+    } catch (err) {
+      setCarpool(null);
+      setPageError(err instanceof Error ? err.message : "Failed to load ride");
+    } finally {
+      setPageLoading(false);
+    }
+  }, [params.id, user?.id]);
 
   useEffect(() => {
+    if (!user?.id) return;
     reload();
-  }, [params.id, user?.id]);
+  }, [user?.id, reload]);
 
   useEffect(() => {
     if (!user || !carpool) {
@@ -139,30 +152,78 @@ function DetailContent() {
   }, [user, carpool]);
 
   async function requestJoin() {
-    setLoading(true);
+    setActionLoading(true);
     setError("");
     try {
-      await apiFetch(`/api/v1/carpools/${params.id}/join-requests`, { method: "POST", body: "{}" });
-      setMyRequest("PENDING");
+      const created = await apiFetch<{ id: string }>(
+        `/api/v1/carpools/${params.id}/join-requests`,
+        { method: "POST", body: "{}" }
+      );
+      setMyRequestStatus("PENDING");
+      setMyRequestId(created.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed");
+      setError(err instanceof Error ? err.message : "Failed to send join request");
     } finally {
-      setLoading(false);
+      setActionLoading(false);
+    }
+  }
+
+  async function cancelJoinRequest() {
+    if (!myRequestId) return;
+    setActionLoading(true);
+    setError("");
+    try {
+      await apiFetch(`/api/v1/join-requests/${myRequestId}`, { method: "DELETE" });
+      setMyRequestStatus(null);
+      setMyRequestId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to cancel request");
+    } finally {
+      setActionLoading(false);
     }
   }
 
   async function handleJoinAction(id: string, action: "accept" | "reject") {
-    await apiFetch(`/api/v1/join-requests/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ action }),
-    });
-    reload();
+    setActionLoading(true);
+    setError("");
+    try {
+      await apiFetch(`/api/v1/join-requests/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ action }),
+      });
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setActionLoading(false);
+    }
   }
 
-  if (!carpool) {
+  if (pageLoading) {
     return (
       <AppShell>
-        <p className="py-12 text-center text-body-md text-on-variant">Loading…</p>
+        <p className="py-12 text-center text-body-md text-on-variant">Loading ride…</p>
+      </AppShell>
+    );
+  }
+
+  if (pageError || !carpool) {
+    return (
+      <AppShell>
+        <div className="mx-auto max-w-lg py-16 text-center">
+          <h1 className="text-headline-lg text-on-surface">Ride unavailable</h1>
+          <p className="mt-2 text-body-lg text-on-variant">
+            {pageError || "This ride could not be found."}
+          </p>
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <button type="button" onClick={() => reload()} className="btn-secondary--inline">
+              Try again
+            </button>
+            <Link href="/carpools" className="btn-primary--inline">
+              Back to browse rides
+            </Link>
+          </div>
+        </div>
       </AppShell>
     );
   }
@@ -176,7 +237,8 @@ function DetailContent() {
     carpool.seatsAvailable > 0 &&
     !cutoffPassed &&
     !hasTripSameDay &&
-    myRequest !== "PENDING";
+    myRequestStatus !== "PENDING" &&
+    myRequestStatus !== "ACCEPTED";
 
   return (
     <AppShell>
@@ -189,6 +251,8 @@ function DetailContent() {
         </div>
         <div className="flex flex-wrap gap-2">
           {viewRole === "requester" && <span className="badge-pending">Pending Approval</span>}
+          {isMember && !isOwner && <span className="badge-member">Joined</span>}
+          {isOwner && <span className="badge-owner">Your ride</span>}
         </div>
       </div>
 
@@ -215,12 +279,14 @@ function DetailContent() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleJoinAction(jr.id, "accept")}
+                        disabled={actionLoading}
                         className="btn-emerald px-3 py-1.5"
                       >
                         Accept
                       </button>
                       <button
                         onClick={() => handleJoinAction(jr.id, "reject")}
+                        disabled={actionLoading}
                         className="btn-secondary w-auto px-3 py-1.5"
                       >
                         Reject
@@ -244,31 +310,61 @@ function DetailContent() {
 
         <div className="space-y-stack-md lg:col-span-4">
           <div className={`card p-5 ${borderClass(viewRole)}`}>
-            <h2 className="text-title-lg text-on-surface">Join This Trip</h2>
+            <h2 className="text-title-lg text-on-surface">
+              {isOwner ? "Manage This Ride" : "Join This Trip"}
+            </h2>
 
             <div className="mt-6 space-y-2">
               {canJoin && (
-                <button onClick={requestJoin} disabled={loading} className="btn-primary">
-                  {loading ? "Requesting…" : "Request to Join"}
+                <button onClick={requestJoin} disabled={actionLoading} className="btn-primary">
+                  {actionLoading ? "Requesting…" : "Request to Join"}
                 </button>
               )}
               {viewRole === "requester" && (
-                <p className="text-body-md text-amber-accent">Join request pending owner approval</p>
+                <>
+                  <p className="text-body-md text-amber-accent">
+                    Join request sent — waiting for the ride creator to approve.
+                  </p>
+                  <button
+                    onClick={cancelJoinRequest}
+                    disabled={actionLoading}
+                    className="btn-secondary"
+                  >
+                    Cancel request
+                  </button>
+                </>
+              )}
+              {myRequestStatus === "REJECTED" && (
+                <p className="text-body-md text-on-variant">
+                  Your join request was rejected by the ride creator.
+                </p>
+              )}
+              {myRequestStatus === "EXPIRED" && (
+                <p className="text-body-md text-on-variant">
+                  Your join request expired (join window closed).
+                </p>
               )}
               {(isOwner || isMember) && (
-                <Link href={`/my-trip?trip=${carpool.id}`} className="btn-primary">
+                <Link
+                  href={`/my-trip?trip=${carpool.id}`}
+                  className="btn-primary"
+                  onClick={() => refreshUser().catch(() => undefined)}
+                >
                   {isOwner ? "Manage in My Bookings" : "Go to My Bookings"}
                 </Link>
               )}
-              {hasTripSameDay && !isMember && (
+              {hasTripSameDay && !isMember && !isOwner && (
                 <p className="text-body-md text-on-variant">
                   You already have a trip on this date. You can only join one trip per day.
                 </p>
               )}
-              {cutoffPassed && !isMember && (
+              {cutoffPassed && !isMember && !isOwner && (
                 <p className="text-body-md text-on-variant">
                   Join requests closed (30 min before departure)
                 </p>
+              )}
+              {carpool.seatsAvailable <= 0 && !isMember && !isOwner && myRequestStatus !== "PENDING" && (
+                <p className="text-body-md text-on-variant">This ride is full.</p>
               )}
             </div>
           </div>
@@ -285,7 +381,7 @@ function DetailContent() {
                     <span className="text-body-md text-on-surface">{m.displayName}</span>
                   </div>
                   <span className={m.role === "OWNER" ? "badge-owner" : "badge-member"}>
-                    {m.role === "OWNER" ? "Owner" : "Member"}
+                    {m.role === "OWNER" ? "Creator" : "Member"}
                   </span>
                 </li>
               ))}

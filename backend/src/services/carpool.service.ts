@@ -28,6 +28,20 @@ export function isSameCalendarDay(a: Date, b: Date, timeZone = APP_TIMEZONE): bo
   return getCalendarDateKey(a, timeZone) === getCalendarDateKey(b, timeZone);
 }
 
+const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
+
+/** UTC bounds for one calendar day in Asia/Kolkata (YYYY-MM-DD). */
+export function getCalendarDayBounds(dateKey: string, timeZone = APP_TIMEZONE) {
+  if (timeZone !== APP_TIMEZONE) {
+    throw new Error(`Unsupported timezone: ${timeZone}`);
+  }
+
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const start = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0) - IST_OFFSET_MS);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1);
+  return { start, end };
+}
+
 export async function findUserTripOnSameDay(
   userId: string,
   departureAt: Date,
@@ -48,6 +62,63 @@ export async function findUserTripOnSameDay(
 
   for (const row of rows) {
     if (excludeCarpoolId && row.id === excludeCarpoolId) continue;
+    if (getCalendarDateKey(row.departureAt) === proposedDay) {
+      return row.departureAt;
+    }
+  }
+
+  return null;
+}
+
+/** Enforces max one created ride per calendar day. */
+export async function findUserOwnedTripOnSameDay(
+  userId: string,
+  departureAt: Date,
+  excludeCarpoolId?: string
+): Promise<Date | null> {
+  const rows = await db
+    .select({ id: carpools.id, departureAt: carpools.departureAt })
+    .from(carpools)
+    .where(
+      and(
+        eq(carpools.ownerId, userId),
+        inArray(carpools.status, ["OPEN", "LOCKED"])
+      )
+    );
+
+  const proposedDay = getCalendarDateKey(departureAt);
+
+  for (const row of rows) {
+    if (excludeCarpoolId && row.id === excludeCarpoolId) continue;
+    if (getCalendarDateKey(row.departureAt) === proposedDay) {
+      return row.departureAt;
+    }
+  }
+
+  return null;
+}
+
+export async function findPendingJoinRequestOnSameDay(
+  userId: string,
+  departureAt: Date,
+  excludeCarpoolId?: string
+): Promise<Date | null> {
+  const rows = await db
+    .select({ carpoolId: joinRequests.carpoolId, departureAt: carpools.departureAt })
+    .from(joinRequests)
+    .innerJoin(carpools, eq(joinRequests.carpoolId, carpools.id))
+    .where(
+      and(
+        eq(joinRequests.requesterId, userId),
+        eq(joinRequests.status, "PENDING"),
+        inArray(carpools.status, ["OPEN", "LOCKED"])
+      )
+    );
+
+  const proposedDay = getCalendarDateKey(departureAt);
+
+  for (const row of rows) {
+    if (excludeCarpoolId && row.carpoolId === excludeCarpoolId) continue;
     if (getCalendarDateKey(row.departureAt) === proposedDay) {
       return row.departureAt;
     }

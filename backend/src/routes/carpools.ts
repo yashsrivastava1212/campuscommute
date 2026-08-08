@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { and, asc, desc, eq, gte, inArray, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/index.js";
 import {
@@ -8,9 +8,13 @@ import {
   discussionRooms,
   users,
 } from "../db/schema.js";
-import { authenticate } from "../middleware/auth.js";
+import { authenticate, optionalAuthenticate } from "../middleware/auth.js";
 import { resolveDisplayName } from "../lib/display-name.js";
-import { findUserTripOnSameDay } from "../services/carpool.service.js";
+import {
+  findUserOwnedTripOnSameDay,
+  findUserTripOnSameDay,
+  getCalendarDayBounds,
+} from "../services/carpool.service.js";
 
 const JOIN_CUTOFF_MINUTES = 30;
 
@@ -86,11 +90,19 @@ export async function carpoolRoutes(app: FastifyInstance) {
         .where(eq(users.id, userId))
         .limit(1);
 
-      const sameDayTrip = await findUserTripOnSameDay(userId, departureAt);
-      if (sameDayTrip) {
+      const sameDayCreated = await findUserOwnedTripOnSameDay(userId, departureAt);
+      if (sameDayCreated) {
         return reply.status(409).send({
           message:
-            "You already have a trip on this date. You can only create or join one trip per day.",
+            "You already created a ride on this date. You can only create one ride per day.",
+        });
+      }
+
+      const sameDayJoined = await findUserTripOnSameDay(userId, departureAt);
+      if (sameDayJoined) {
+        return reply.status(409).send({
+          message:
+            "You already have a trip on this date. Finish or leave that booking before creating another ride.",
         });
       }
 
@@ -132,23 +144,34 @@ export async function carpoolRoutes(app: FastifyInstance) {
     }
   );
 
-  app.get("/api/v1/carpools", async (request, reply) => {
+  app.get(
+    "/api/v1/carpools",
+    { preHandler: optionalAuthenticate },
+    async (request, reply) => {
     const parsed = browseQuerySchema.safeParse(request.query);
     if (!parsed.success) {
       return reply.status(400).send({ message: "Invalid query parameters" });
     }
 
-    const conditions = [eq(carpools.status, parsed.data.status)];
+    const now = new Date();
+    const conditions = [
+      eq(carpools.status, parsed.data.status),
+      gte(carpools.departureAt, now),
+    ];
 
     if (parsed.data.destination) {
       conditions.push(eq(carpools.destination, parsed.data.destination));
     }
 
     if (parsed.data.date) {
-      const dayStart = new Date(`${parsed.data.date}T00:00:00.000Z`);
-      const dayEnd = new Date(`${parsed.data.date}T23:59:59.999Z`);
-      conditions.push(gte(carpools.departureAt, dayStart));
-      conditions.push(lt(carpools.departureAt, dayEnd));
+      const { start, end } = getCalendarDayBounds(parsed.data.date);
+      conditions.push(gte(carpools.departureAt, start));
+      conditions.push(lt(carpools.departureAt, end));
+    }
+
+    const viewerId = request.user?.sub;
+    if (viewerId) {
+      conditions.push(ne(carpools.ownerId, viewerId));
     }
 
     const rows = await db
@@ -169,7 +192,7 @@ export async function carpoolRoutes(app: FastifyInstance) {
       .from(carpools)
       .innerJoin(users, eq(carpools.ownerId, users.id))
       .where(and(...conditions))
-      .orderBy(desc(carpools.departureAt));
+      .orderBy(asc(carpools.departureAt));
 
     return reply.send({
       carpools: rows.map((row) => ({
@@ -434,15 +457,26 @@ export async function carpoolRoutes(app: FastifyInstance) {
 
       if (parsed.data.departureAt) {
         const departureAt = new Date(parsed.data.departureAt);
-        const sameDayTrip = await findUserTripOnSameDay(
+        const sameDayOwned = await findUserOwnedTripOnSameDay(
           request.user!.sub,
           departureAt,
           id
         );
-        if (sameDayTrip) {
+        if (sameDayOwned) {
           return reply.status(409).send({
             message:
-              "You already have another trip on this date. You can only have one trip per day.",
+              "You already have another ride on this date. You can only create one ride per day.",
+          });
+        }
+        const sameDayOther = await findUserTripOnSameDay(
+          request.user!.sub,
+          departureAt,
+          id
+        );
+        if (sameDayOther) {
+          return reply.status(409).send({
+            message:
+              "You already have another trip on this date.",
           });
         }
         updates.departureAt = departureAt;

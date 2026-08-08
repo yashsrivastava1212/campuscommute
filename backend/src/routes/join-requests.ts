@@ -11,6 +11,7 @@ import {
 import { authenticate } from "../middleware/auth.js";
 import { resolveDisplayName } from "../lib/display-name.js";
 import {
+  findPendingJoinRequestOnSameDay,
   findUserTripOnSameDay,
   getMembership,
   postSystemMessage,
@@ -42,11 +43,27 @@ export async function joinRequestRoutes(app: FastifyInstance) {
         return reply.status(400).send({ message: "No seats available" });
       }
 
+      if (carpool.ownerId === userId) {
+        return reply.status(400).send({ message: "You cannot request to join your own ride" });
+      }
+
       const sameDayTrip = await findUserTripOnSameDay(userId, carpool.departureAt);
       if (sameDayTrip) {
         return reply.status(409).send({
           message:
-            "You already have a trip on this date. You can only create or join one trip per day.",
+            "You already have a trip on this date. You can only join one trip per day.",
+        });
+      }
+
+      const pendingSameDay = await findPendingJoinRequestOnSameDay(
+        userId,
+        carpool.departureAt,
+        id
+      );
+      if (pendingSameDay) {
+        return reply.status(409).send({
+          message:
+            "You already have a pending join request for another ride on this date.",
         });
       }
 
@@ -102,7 +119,7 @@ export async function joinRequestRoutes(app: FastifyInstance) {
       const userId = request.user!.sub;
 
       const [requestRow] = await db
-        .select({ status: joinRequests.status })
+        .select({ id: joinRequests.id, status: joinRequests.status })
         .from(joinRequests)
         .where(
           and(
@@ -113,7 +130,10 @@ export async function joinRequestRoutes(app: FastifyInstance) {
         .orderBy(desc(joinRequests.requestedAt))
         .limit(1);
 
-      return reply.send({ status: requestRow?.status ?? null });
+      return reply.send({
+        id: requestRow?.id ?? null,
+        status: requestRow?.status ?? null,
+      });
     }
   );
 
