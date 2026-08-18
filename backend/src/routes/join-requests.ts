@@ -10,6 +10,7 @@ import {
 } from "../db/schema.js";
 import { authenticate } from "../middleware/auth.js";
 import { resolveDisplayName } from "../lib/display-name.js";
+import { trackEvent } from "../lib/analytics.js";
 import {
   findPendingJoinRequestOnSameDay,
   findUserTripOnSameDay,
@@ -107,6 +108,12 @@ export async function joinRequestRoutes(app: FastifyInstance) {
         metadata: { carpoolId: id, joinRequestId: jr.id },
       });
 
+      trackEvent(userId, "Join Request Sent", {
+        carpool_id: id,
+        join_request_id: jr.id,
+        destination: carpool.destination,
+      });
+
       return reply.status(201).send(jr);
     }
   );
@@ -201,6 +208,10 @@ export async function joinRequestRoutes(app: FastifyInstance) {
           body: `Your request to join the carpool to ${carpool.destination} was rejected.`,
           metadata: { carpoolId: carpool.id },
         });
+        trackEvent(jr.requesterId, "Join Request Rejected", {
+          carpool_id: carpool.id,
+          join_request_id: id,
+        });
         return reply.send({ status: "REJECTED" });
       }
 
@@ -255,6 +266,11 @@ export async function joinRequestRoutes(app: FastifyInstance) {
         metadata: { carpoolId: carpool.id },
       });
 
+      trackEvent(jr.requesterId, "Join Request Accepted", {
+        carpool_id: carpool.id,
+        join_request_id: id,
+      });
+
       return reply.send({ status: "ACCEPTED" });
     }
   );
@@ -293,6 +309,8 @@ export async function joinRequestRoutes(app: FastifyInstance) {
 
       await postSystemMessage(id, "Carpool locked. Group finalized.");
 
+      trackEvent(carpool.ownerId, "Ride Locked", { carpool_id: id });
+
       const members = await db.select({ userId: carpoolMemberships.userId }).from(carpoolMemberships).where(eq(carpoolMemberships.carpoolId, id));
       for (const m of members) {
         await createNotification({
@@ -327,6 +345,8 @@ export async function joinRequestRoutes(app: FastifyInstance) {
         .returning();
 
       await postSystemMessage(id, "Carpool unlocked. Open for updates again.");
+
+      trackEvent(carpool.ownerId, "Ride Unlocked", { carpool_id: id });
 
       return reply.send(updated);
     }

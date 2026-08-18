@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { AuthProvider } from "@/context/AuthProvider";
 import { ClientProviders } from "@/components/ClientProviders";
+import { MixpanelAuthSync } from "@/components/analytics/MixpanelAuthSync";
 import "./globals.css";
 
 const inter = Inter({
@@ -25,7 +26,10 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.variable} font-sans antialiased`}>
         <ClientProviders>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <MixpanelAuthSync />
+            {children}
+          </AuthProvider>
         </ClientProviders>
       </body>
     </html>

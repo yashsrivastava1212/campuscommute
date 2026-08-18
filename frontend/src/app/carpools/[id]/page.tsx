@@ -9,6 +9,7 @@ import { DiscussionPanel } from "@/components/DiscussionPanel";
 import { TripInfoGrid } from "@/components/TripInfoGrid";
 import { useAuth } from "@/context/AuthProvider";
 import { apiFetch } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 import { isSameCalendarDay } from "@/lib/format";
 
 type Member = {
@@ -150,6 +151,15 @@ function DetailContent() {
       })
       .catch(() => setHasTripSameDay(false));
   }, [user, carpool]);
+
+  useEffect(() => {
+    if (!carpool || pageLoading) return;
+    trackEvent("Ride Detail Viewed", {
+      carpool_id: carpool.id,
+      status: carpool.status,
+      is_locked: carpool.isLocked,
+    });
+  }, [carpool?.id, pageLoading]);
 
   async function requestJoin() {
     setActionLoading(true);

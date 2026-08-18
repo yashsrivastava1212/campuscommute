@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { isValidGimEmail, normalizeEmail } from "../lib/email-domain.js";
 import { GIM_EMAIL_ERROR } from "../lib/email.js";
+import { trackEvent } from "../lib/analytics.js";
 import {
   findOrCreateUser,
   issueAuthTokens,
@@ -96,6 +97,8 @@ export async function authRoutes(app: FastifyInstance) {
 
     const { user, isNewUser } = await findOrCreateUser(email);
     const tokens = await issueAuthTokens(user);
+
+    trackEvent(user.id, "Login Completed", { is_new_user: isNewUser });
 
     let supabaseTokenHash: string | undefined;
     if (isSupabaseAdminConfigured()) {

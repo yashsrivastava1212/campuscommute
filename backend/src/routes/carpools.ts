@@ -10,6 +10,7 @@ import {
 } from "../db/schema.js";
 import { authenticate, optionalAuthenticate } from "../middleware/auth.js";
 import { resolveDisplayName } from "../lib/display-name.js";
+import { trackEvent } from "../lib/analytics.js";
 import {
   clearActiveCarpoolForMembers,
   findUserOwnedTripOnSameDay,
@@ -142,6 +143,12 @@ export async function carpoolRoutes(app: FastifyInstance) {
         .update(users)
         .set({ activeCarpoolId: carpool.id, updatedAt: new Date() })
         .where(eq(users.id, userId));
+
+      trackEvent(userId, "Ride Created", {
+        carpool_id: carpool.id,
+        destination: carpool.destination,
+        departure_at: carpool.departureAt.toISOString(),
+      });
 
       return reply.status(201).send(carpool);
     }
@@ -335,6 +342,9 @@ export async function carpoolRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const userId = request.user!.sub;
       const cancelled = await wipeAllOwnedCarpools(userId);
+      if (cancelled > 0) {
+        trackEvent(userId, "Created Rides Cleared", { count: cancelled });
+      }
       return reply.send({
         cancelled,
         message:
@@ -561,6 +571,8 @@ export async function carpoolRoutes(app: FastifyInstance) {
           .set({ activeCarpoolId: null, updatedAt: new Date() })
           .where(eq(users.id, member.userId));
       }
+
+      trackEvent(request.user!.sub, "Ride Cancelled", { carpool_id: id });
 
       return reply.send(updated);
     }

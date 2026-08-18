@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { groupLocations, type Location } from "@/components/LocationSelect";
 import { apiFetch } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 
 type Carpool = {
   id: string;
@@ -57,6 +58,16 @@ function BrowseContent() {
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load"))
       .finally(() => setLoading(false));
   }, [destination, date]);
+
+  useEffect(() => {
+    if (!loading && !error) {
+      trackEvent("Browse Rides Viewed", {
+        destination_filter: destination || null,
+        date_filter: date || null,
+        results_count: carpools.length,
+      });
+    }
+  }, [loading, error, destination, date, carpools.length]);
 
   useEffect(() => {
     function reloadBrowse() {

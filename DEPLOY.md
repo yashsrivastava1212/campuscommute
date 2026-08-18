@@ -43,6 +43,7 @@ Both web services deploy from the same GitHub repo.
 | `SMTP_PASS` | Google App Password (16 chars) |
 | `EMAIL_FROM` | `CampusCommute <your@gmail.com>` |
 | `ALLOW_DEV_OTP` | `false` (legacy backend OTP only; Supabase sends login emails) |
+| `MIXPANEL_TOKEN` | your Mixpanel project token (production analytics) |
 
 Do **not** set `USE_PGLITE` in production.
 
@@ -100,6 +101,7 @@ Put email variables on the **backend** service only, not the frontend.
 | `NEXT_PUBLIC_API_URL` | your Railway **backend** URL (no trailing slash) |
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://YOUR-PROJECT.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase **Publishable** key (Settings → API) |
+| `NEXT_PUBLIC_MIXPANEL_TOKEN` | same Mixpanel project token as backend |
 
 Do **not** add backend variables (`DATABASE_URL`, `JWT_SECRET`, `SUPABASE_JWT_SECRET`, etc.) to the frontend service.
 

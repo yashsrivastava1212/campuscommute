@@ -14,6 +14,7 @@ import { AppShell } from "@/components/MainNav";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useAuth } from "@/context/AuthProvider";
 import { apiFetch } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 import { isSameCalendarDay } from "@/lib/format";
 
 export default function CreateCarpoolPage() {
@@ -46,6 +47,7 @@ function CreateContent() {
         if (gim) setOriginId(gim.id);
       })
       .catch(() => undefined);
+    trackEvent("Create Ride Started");
   }, []);
 
   useEffect(() => {

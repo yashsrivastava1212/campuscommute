@@ -15,6 +15,7 @@ import {
 } from "@/components/LocationSelect";
 import { useAuth } from "@/context/AuthProvider";
 import { apiFetch } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 import { formatRideDate, formatRideTime } from "@/lib/format";
 
 type Member = {
@@ -232,6 +233,15 @@ function MyTripContent() {
     syncTripForm(fallbackTrip);
     loadJoinRequests(fallbackTrip).catch(() => undefined);
   }, [loading, trips, selectedTripId, urlTripId, user?.id]);
+
+  useEffect(() => {
+    if (loading) return;
+    trackEvent("My Bookings Viewed", {
+      total_bookings: trips.length,
+      created_count: createdTrips.length,
+      joined_count: joinedTrips.length,
+    });
+  }, [loading, trips.length, createdTrips.length, joinedTrips.length]);
 
   async function handleJoinAction(id: string, action: "accept" | "reject") {
     setActionLoading(true);
