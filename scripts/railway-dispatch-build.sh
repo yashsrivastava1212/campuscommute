@@ -6,9 +6,17 @@ is_frontend_service() {
   if [ "${SERVICE_ROLE:-}" = "frontend" ]; then
     return 0
   fi
+  if [ "${SERVICE_ROLE:-}" = "backend" ]; then
+    return 1
+  fi
 
   local meta="${RAILWAY_SERVICE_NAME:-} ${RAILWAY_PUBLIC_DOMAIN:-} ${RAILWAY_STATIC_URL:-}"
   if echo "$meta" | grep -qi 'frontend'; then
+    return 0
+  fi
+
+  # Frontend service never links Postgres; backend always should.
+  if [ -z "${DATABASE_URL:-}" ]; then
     return 0
   fi
 

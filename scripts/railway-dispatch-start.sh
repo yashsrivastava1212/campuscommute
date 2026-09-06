@@ -6,9 +6,17 @@ is_frontend_service() {
   if [ "${SERVICE_ROLE:-}" = "frontend" ]; then
     return 0
   fi
+  if [ "${SERVICE_ROLE:-}" = "backend" ]; then
+    return 1
+  fi
 
   local meta="${RAILWAY_SERVICE_NAME:-} ${RAILWAY_PUBLIC_DOMAIN:-} ${RAILWAY_STATIC_URL:-}"
   if echo "$meta" | grep -qi 'frontend'; then
+    return 0
+  fi
+
+  # Frontend service never links Postgres; backend always should.
+  if [ -z "${DATABASE_URL:-}" ]; then
     return 0
   fi
 
@@ -27,9 +35,8 @@ fi
 
 echo "[dispatch] BACKEND start on PORT=${PORT:-3001} (name=${RAILWAY_SERVICE_NAME:-}, domain=${RAILWAY_PUBLIC_DOMAIN:-})"
 if [ -z "${DATABASE_URL:-}" ]; then
-  echo "[dispatch] ERROR: DATABASE_URL is missing on this service." >&2
-  echo "[dispatch] Link Postgres to the BACKEND service only (Variables → Add Reference → DATABASE_URL)." >&2
-  echo "[dispatch] If this is the frontend service, set SERVICE_ROLE=frontend and redeploy." >&2
+  echo "[dispatch] ERROR: DATABASE_URL is missing on the backend service." >&2
+  echo "[dispatch] Backend → Variables → Add Reference → PostgreSQL → DATABASE_URL" >&2
   exit 1
 fi
 exec npm run start -w backend
