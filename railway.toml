@@ -1,9 +1,9 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm install --include=dev && npm run build -w backend"
+buildCommand = "bash scripts/railway-dispatch-build.sh"
 
 [deploy]
-startCommand = "npm run start -w backend"
+startCommand = "bash scripts/railway-dispatch-start.sh"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"

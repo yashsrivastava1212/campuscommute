@@ -1,8 +1,9 @@
 [build]
-builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile.frontend"
+builder = "NIXPACKS"
+buildCommand = "bash scripts/railway-dispatch-build.sh"
 
 [deploy]
-healthcheckPath = "/login"
+startCommand = "bash scripts/railway-dispatch-start.sh"
+healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
