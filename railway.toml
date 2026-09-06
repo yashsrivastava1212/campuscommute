@@ -5,5 +5,5 @@ buildCommand = "npm install --include=dev && npm run build -w backend"
 [deploy]
 startCommand = "npm run start -w backend"
 healthcheckPath = "/health"
-healthcheckTimeout = 120
+healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"

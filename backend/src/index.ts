@@ -6,12 +6,22 @@ import { getEmailDeliveryStatus, getResendApiKey } from "./lib/email.js";
 const PORT = Number(process.env.PORT ?? 3001);
 const HOST = process.env.HOST ?? "0.0.0.0";
 
-async function start() {
-  if (process.env.NODE_ENV === "production") {
+async function runProductionSetupSafely() {
+  if (process.env.NODE_ENV !== "production") return;
+
+  try {
     const { runProductionSetup } = await import("./db/prepare.js");
     await runProductionSetup();
+    console.log("[DB] Production setup complete");
+  } catch (error) {
+    console.error("[DB] Production setup failed:", error);
+    console.error(
+      "[DB] /health stays up; fix DATABASE_URL or Postgres, then redeploy."
+    );
   }
+}
 
+async function start() {
   const { buildServer } = await import("./server.js");
   const app = await buildServer();
   startOtpCleanupJob();
@@ -35,11 +45,14 @@ async function start() {
 
   try {
     await app.listen({ port: PORT, host: HOST });
-    console.log(`API running at http://${HOST}:${PORT}`);
+    console.log(`API running at http://${HOST}:${PORT} (Railway PORT=${PORT})`);
   } catch (error) {
     app.log.error(error);
     process.exit(1);
   }
+
+  // Run migrations after listen so Railway health checks pass while DB starts.
+  await runProductionSetupSafely();
 }
 
 start().catch((error) => {
