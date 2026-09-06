@@ -31,9 +31,18 @@ async function initDb() {
     return instance;
   }
 
-  const connectionString =
-    process.env.DATABASE_URL ??
-    "postgresql://campuscommute:campuscommute@localhost:5432/campuscommute";
+  const connectionString = process.env.DATABASE_URL?.trim();
+  if (!connectionString) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "DATABASE_URL is not set. On Railway: backend service → Variables → Add Reference → PostgreSQL → DATABASE_URL. Do not run the API on the frontend service."
+      );
+    }
+    const local =
+      "postgresql://campuscommute:campuscommute@localhost:5432/campuscommute";
+    const client = createPostgresClient(local, 10);
+    return drizzlePostgres(client, { schema });
+  }
 
   const client = createPostgresClient(connectionString, 10);
   return drizzlePostgres(client, { schema });

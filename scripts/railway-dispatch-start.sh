@@ -26,4 +26,10 @@ if is_frontend_service; then
 fi
 
 echo "[dispatch] BACKEND start on PORT=${PORT:-3001} (name=${RAILWAY_SERVICE_NAME:-}, domain=${RAILWAY_PUBLIC_DOMAIN:-})"
+if [ -z "${DATABASE_URL:-}" ]; then
+  echo "[dispatch] ERROR: DATABASE_URL is missing on this service." >&2
+  echo "[dispatch] Link Postgres to the BACKEND service only (Variables → Add Reference → DATABASE_URL)." >&2
+  echo "[dispatch] If this is the frontend service, set SERVICE_ROLE=frontend and redeploy." >&2
+  exit 1
+fi
 exec npm run start -w backend
