@@ -1,9 +1,9 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm install && npm run build -w frontend"
+buildCommand = "if [ -f scripts/railway-frontend-build.sh ]; then bash scripts/railway-frontend-build.sh; else bash ../scripts/railway-frontend-build.sh; fi"
 
 [deploy]
-startCommand = "npm run start -w frontend"
+startCommand = "if [ -f scripts/railway-frontend-start.sh ]; then bash scripts/railway-frontend-start.sh; else bash ../scripts/railway-frontend-start.sh; fi"
 healthcheckPath = "/login"
 healthcheckTimeout = 120
 restartPolicyType = "ON_FAILURE"
