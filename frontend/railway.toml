@@ -1,8 +1,9 @@
 [build]
-builder = "DOCKERFILE"
-dockerfilePath = "frontend/Dockerfile"
+builder = "NIXPACKS"
+buildCommand = "npm install --include=dev && npm run build -w frontend"
 
 [deploy]
+startCommand = "bash scripts/railway-frontend-run.sh"
 healthcheckPath = "/login"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
