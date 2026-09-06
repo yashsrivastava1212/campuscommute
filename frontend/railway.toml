@@ -1,9 +1,9 @@
 [build]
 builder = "NIXPACKS"
-buildCommand = "bash scripts/railway-dispatch-build.sh"
+buildCommand = "npm run railway:build"
 
 [deploy]
-startCommand = "bash scripts/railway-dispatch-start.sh"
+startCommand = "npm run railway:start"
 healthcheckPath = "/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
