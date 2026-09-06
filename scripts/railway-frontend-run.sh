@@ -14,15 +14,19 @@ find_monorepo_root() {
   return 1
 }
 
+export HOSTNAME="${HOSTNAME:-0.0.0.0}"
+
 if root="$(find_monorepo_root)"; then
   cd "$root"
-  echo "[railway-frontend] Monorepo root: $root"
+  echo "[railway-frontend] Monorepo root: $root (PORT=${PORT:-unset})"
   npm install --include=dev
   npm run build -w frontend
+  test -f frontend/.next/BUILD_ID
   exec npm run start -w frontend
 fi
 
-echo "[railway-frontend] Standalone frontend: $PWD"
+echo "[railway-frontend] Standalone frontend: $PWD (PORT=${PORT:-unset})"
 npm install --include=dev
 npm run build
+test -f .next/BUILD_ID
 exec npm run start

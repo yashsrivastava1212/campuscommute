@@ -3,9 +3,12 @@ import path from "node:path";
 import postgres from "postgres";
 
 export function createPostgresClient(connectionString: string, max = 10) {
+  // Railway private DB host (postgres.railway.internal) must not use SSL.
+  const isPrivateRailwayHost = /railway\.internal/i.test(connectionString);
   const useSsl =
-    process.env.NODE_ENV === "production" ||
-    /railway\.app|rlwy\.net|render\.com|sslmode=require/i.test(connectionString);
+    !isPrivateRailwayHost &&
+    (process.env.NODE_ENV === "production" ||
+      /railway\.app|rlwy\.net|render\.com|sslmode=require/i.test(connectionString));
 
   return postgres(connectionString, {
     max,
