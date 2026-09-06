@@ -1,9 +1,8 @@
 [build]
-builder = "NIXPACKS"
-buildCommand = "if [ -f scripts/railway-frontend-build.sh ]; then bash scripts/railway-frontend-build.sh; else bash ../scripts/railway-frontend-build.sh; fi"
+builder = "DOCKERFILE"
+dockerfilePath = "frontend/Dockerfile"
 
 [deploy]
-startCommand = "if [ -f scripts/railway-frontend-start.sh ]; then bash scripts/railway-frontend-start.sh; else bash ../scripts/railway-frontend-start.sh; fi"
 healthcheckPath = "/login"
-healthcheckTimeout = 120
+healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
